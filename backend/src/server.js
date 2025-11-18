@@ -18,11 +18,13 @@ const monthlyVoteRoutes = require("./routes/monthlyVote");
 const app = express();
 connectDB();
 
+// ===== Env / Config =====
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
+const isProd = process.env.NODE_ENV === "production";
 
-// ==== ใช้ proxy (จำเป็นตอนรันบน Render) ====
+// ถ้าอยู่หลัง proxy (Render) ให้ trust proxy
 app.set("trust proxy", 1);
 
 // ===== Parsers =====
@@ -32,36 +34,28 @@ app.use(cookieParser());
 
 // ===== CORS =====
 const corsOptions = {
-  origin: ORIGIN,
+  origin: ORIGIN, // เช่น https://gamehub-platform-nine.vercel.app
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
-// เผื่อ preflight ทุก path
+// preflight ทุก path
 app.options("*", cors(corsOptions));
 
 // ===== Session + Passport =====
-const isProd = process.env.NODE_ENV === "production";
-
-// ถ้ามี COOKIE_SECURE ใน env ก็ใช้ค่านั้น; ถ้าไม่มีให้ default เป็น true ใน prod, false ใน dev
-const cookieSecureEnv = String(process.env.COOKIE_SECURE || "").toLowerCase();
-const cookieSecure = cookieSecureEnv
-  ? cookieSecureEnv === "true"
-  : isProd;
-
-// dev ใช้ sameSite=lax, prod (Vercel + Render คนละโดเมน) ต้องเป็น none
-const sameSite = isProd ? "none" : "lax";
-
+// สำคัญ: ให้ cookie ข้ามโดเมนได้ ต้อง SameSite: 'none' + secure: true
 app.use(
   session({
     secret: process.env.JWT_SECRET || "devsecret",
     resave: false,
     saveUninitialized: false,
+    proxy: true, // ให้เคารพค่า trust proxy เวลาเช็ค secure
     cookie: {
-      sameSite,          // dev: "lax", prod: "none"
-      secure: cookieSecure, // prod ต้อง true เพราะใช้ https
+      httpOnly: true,
+      secure: isProd, // บน Render เป็น https → true, dev local → false
+      sameSite: isProd ? "none" : "lax", // โปรดักชันข้ามโดเมน, dev ใช้ lax พอ
     },
   })
 );
@@ -70,7 +64,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 require("./config/passport");
 
-// ===== Static uploads (สำหรับไฟล์เกม Unity/WebGL ฯลฯ) =====
+// ===== Static uploads (Unity/WebGL ฯลฯ) =====
 app.use(
   "/uploads",
   express.static(uploadsDir, {
@@ -110,7 +104,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api", commentsRoutes);    // comments
+app.use("/api", commentsRoutes); // comments
 app.use("/api", monthlyVoteRoutes); // monthly vote
 
 // Health check
