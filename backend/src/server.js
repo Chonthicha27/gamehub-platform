@@ -22,7 +22,8 @@ const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
-app.set("trust proxy", 1); // ถ้า reverse proxy ในอนาคต
+// ==== ใช้ proxy (จำเป็นตอนรันบน Render) ====
+app.set("trust proxy", 1);
 
 // ===== Parsers =====
 app.use(express.json({ limit: "20mb" }));
@@ -42,8 +43,16 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // ===== Session + Passport =====
-const cookieSecure =
-  String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
+const isProd = process.env.NODE_ENV === "production";
+
+// ถ้ามี COOKIE_SECURE ใน env ก็ใช้ค่านั้น; ถ้าไม่มีให้ default เป็น true ใน prod, false ใน dev
+const cookieSecureEnv = String(process.env.COOKIE_SECURE || "").toLowerCase();
+const cookieSecure = cookieSecureEnv
+  ? cookieSecureEnv === "true"
+  : isProd;
+
+// dev ใช้ sameSite=lax, prod (Vercel + Render คนละโดเมน) ต้องเป็น none
+const sameSite = isProd ? "none" : "lax";
 
 app.use(
   session({
@@ -51,11 +60,12 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      sameSite: "lax",
-      secure: cookieSecure,
+      sameSite,          // dev: "lax", prod: "none"
+      secure: cookieSecure, // prod ต้อง true เพราะใช้ https
     },
   })
 );
+
 app.use(passport.initialize());
 app.use(passport.session());
 require("./config/passport");
@@ -100,8 +110,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api", commentsRoutes);       // comments
-app.use("/api", monthlyVoteRoutes);    // ✅ monthly vote (รวม /games/:id/monthly-vote และ /monthly-vote/leaderboard)
+app.use("/api", commentsRoutes);    // comments
+app.use("/api", monthlyVoteRoutes); // monthly vote
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
