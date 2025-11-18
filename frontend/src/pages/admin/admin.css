@@ -1,0 +1,267 @@
+/* =======================================================================
+   Admin UI – Vivid Theme (wide, clean, no-overlap)
+   วางไฟล์นี้เป็น frontend/src/pages/admin/admin.css
+   ======================================================================= */
+
+/* ---------- Tokens / Palette (สีชัด) ---------- */
+:root{
+  --bg: #0a0d12;
+  --panel: #0f1420;
+  --panel-2: #121a2a;
+  --glass: rgba(16, 22, 34, .55);
+  --border: rgba(255,255,255,.08);
+  --txt: #eef2ff;
+  --muted: #9fb0d4;
+
+  /* Accents */
+  --pri: #7c4dff;        /* purple */
+  --pri-2: #00e1ff;      /* cyan */
+  --ok: #22c55e;         /* green */
+  --warn: #f59e0b;       /* amber */
+  --danger: #ef4444;     /* red */
+
+  --chip-bg: #1b2236;
+  --radius: 14px;
+
+  /* soft shadows */
+  --shadow-1: 0 10px 30px rgba(0,0,0,.45);
+  --shadow-2: 0 4px 16px rgba(0,0,0,.35);
+}
+
+/* ---------- Base ---------- */
+body{ background:#070a10; }
+.admin-wrap{
+  width: min(1600px, 96vw);
+  margin: 28px auto 96px;
+  padding: 0 20px;
+  color: var(--txt);
+}
+.admin-title{
+  font-size: 36px; font-weight: 900; letter-spacing:.3px; margin: 4px 0 18px;
+  background: linear-gradient(90deg, var(--pri), var(--pri-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.glass{
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)), var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(10px);
+}
+
+/* ---------- Toolbar (ปุ่มแท็บสวยขึ้น) ---------- */
+.admin-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:16px; }
+.tabs{ display:flex; gap:10px; }
+.tab{
+  display:flex; align-items:center; gap:8px;
+  padding: 9px 14px; border-radius: 999px; font-weight:800;
+  color:#cfe2ff; background:#12192c; border:1px solid #2a3a64;
+  transition:.2s; box-shadow: var(--shadow-2);
+}
+.tab:hover{ filter:brightness(1.08); transform: translateY(-1px); }
+.tab.active{
+  color:#0a0d12; border-color:transparent;
+  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
+}
+.counter{
+  padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight:900;
+  background: rgba(0,0,0,.25); color:#cfe2ff;
+}
+.tab.active .counter{ color:#0a0d12; background:rgba(255,255,255,.25); }
+
+/* dot หน้าปุ่มแท็บ (เคยอ้างถึงแต่ไม่ได้ประกาศ) */
+.tab-dot{ width:8px; height:8px; border-radius:999px; background:currentColor; opacity:.65; }
+
+.admin-toolbar .right{ flex:1; display:flex; gap:10px; justify-content:flex-end; }
+.search{
+  width: clamp(320px, 42vw, 640px);
+  padding: 11px 14px; border-radius: 12px;
+  background: #0c1220; color: var(--txt);
+  border:1px solid #2a365a; outline:none; transition:.15s;
+  box-shadow: var(--shadow-2);
+}
+.search:focus{
+  border-color: #5ea7ff;
+  box-shadow: 0 0 0 3px rgba(94,167,255,.18);
+}
+
+/* ---------- Table (สีชัด + hover) ---------- */
+.table-wrap{ overflow:auto; border-radius: var(--radius); }
+.table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:auto; }
+.table thead th{
+  position: sticky; top:0; z-index:2;
+  background: linear-gradient(180deg, #19233a, #161f33);
+  color:#dbe6ff; text-align:left; padding:12px 14px; font-size:13px; letter-spacing:.2px;
+  border-bottom:1px solid var(--border);
+}
+.table tbody td{
+  padding:16px; border-bottom:1px solid var(--border); vertical-align:middle;
+  background: var(--panel);
+}
+.table tbody tr:nth-child(2n) td{ background:#10182a; }
+.table tbody tr:hover td{
+  background: #15213a;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+/* คอลัมน์—เว้นที่ให้ปุ่มด้านขวา */
+.col-user{   width: 28%; }
+.col-email{  width: 38%; }
+.col-role{   width: 10%; }
+.col-status{ width: 10%; }
+.col-actions{ width: 14%; }
+.right{ text-align:right; }
+
+/* ---------- Cell Content ---------- */
+.cell-main{ display:flex; align-items:center; gap:12px; min-width:0; }
+.strong{ font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.muted{ color:var(--muted); }
+.tiny{ font-size:12px; }
+.ellipsis{ display:inline-block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ถ้าใช้รูป cover คงไว้ */
+.avatar-sm,.cover-sm{
+  width:42px;height:42px;border-radius:10px; background:#1c2540 center/cover no-repeat;
+  border:1px solid #2b3a63;
+}
+/* อวาตาร์ตัวอักษร (แทนกล่องติ๊กเลือก) */
+.avatar-circle{
+  width:42px;height:42px;border-radius:50%;
+  background:#1f2e59; color:#cfe3ff;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+}
+
+/* ---------- Chips (สีแน่น) ---------- */
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; border-radius:999px; font-size:12px; font-weight:900;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+.chip-gray   { color:#e6edff; background:#1a2540; border-color:#2a3b67; }
+.chip-green  { color:#d7ffe8; background:#0f3a23; border-color:#1e6b45; }
+.chip-purple { color:#f1e8ff; background:#2a185b; border-color:#5030a4; }
+.chip-red    { color:#ffe0e3; background:#3f1220; border-color:#7a2a3b; }
+.chip-amber  { color:#ffefc7; background:#3a2908; border-color:#6e5212; }
+/* เพิ่มสไตล์ที่เคยหลุดไป */
+.chip-blue   { color:#e6f3ff; background:#123a5e; border-color:#1e5a8e; }
+
+/* ---------- Buttons (สีชัด + ขนาดเล็กสำหรับแถว) ---------- */
+.btn{
+  padding:9px 12px; border-radius:10px; font-weight:900; letter-spacing:.1px;
+  background:#121a2a; color:#eaf0ff; border:1px solid #2b3b66; transition:.2s; cursor:pointer;
+  box-shadow: var(--shadow-2);
+}
+.btn.small{ padding:7px 10px; font-size:13px; }
+.btn.soft{ box-shadow:0 6px 16px rgba(0,0,0,.25); }  /* <- เคยอ้างถึง soft จึงเพิ่มให้ */
+.btn:hover{ filter:brightness(1.08); transform: translateY(-1px); }
+.btn:active{ transform: translateY(0); }
+.btn.ghost{ background:#0f1627; border-color:#24345b; }
+.btn.primary{
+  color:#081018; border-color: transparent;
+  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
+}
+.btn.ok{ background:#0e3a27; border-color:#1f6f4d; color:#d9ffe9; }
+.btn.warn{ background:#3c2b0e; border-color:#6e5318; color:#ffe5b3; }
+.btn.danger{ background:#3d1520; border-color:#6e2a37; color:#ffd6dc; }
+.btn-group{ display:inline-flex; gap:8px; }
+
+/* กลุ่มปุ่มฝั่งขวา: กันชน/พับเมื่อจอแคบ */
+.actions{
+  display:flex; flex-wrap:wrap; gap:8px 10px; justify-content:flex-end;
+}
+
+/* ---------- Empty/Loading ---------- */
+.empty{ text-align:center; color:var(--muted); padding:20px 0; }
+.loading{ margin: 12px 0 14px; color: var(--muted); }
+
+/* ---------- Scrollbar ---------- */
+.table-wrap::-webkit-scrollbar{ height:10px; width:10px; }
+.table-wrap::-webkit-scrollbar-thumb{ background:#223057; border-radius:999px; }
+.table-wrap::-webkit-scrollbar-track{ background:transparent; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1140px){
+  .col-email{ width:34%; }
+  .col-actions{ width:18%; }
+  .search{ width: clamp(260px, 38vw, 520px); }
+}
+@media (max-width: 980px){
+  .col-email{ display:none; }
+  .col-user{ width:46%; }
+  .col-actions{ width:24%; }
+}
+@media (max-width: 640px){
+  .admin-title{ font-size:28px; }
+  .search{ width:200px; }
+}
+
+/* ==== HIGH-CONTRAST PATCH (put at end of admin.css) ==== */
+
+/* header / table background เข้มขึ้น ตัวอักษรชัด */
+.table thead th{
+  background: linear-gradient(180deg, #13213f 0%, #101a33 100%) !important;
+  color:#ffffff !important;
+  border-bottom: 1px solid rgba(255,255,255,.12) !important;
+}
+.table tbody td{
+  background: #0d1426 !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+}
+.table tbody tr:nth-child(2n) td{ background:#0b1020 !important; }
+.table tbody tr:hover td{ background:#151f3e !important; }
+
+/* chips: สีทึบ-หนา-อ่านง่าย */
+.chip{
+  border: none !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,.2) inset, 0 0 0 1px rgba(255,255,255,.05);
+  padding: 6px 12px !important;
+  font-weight: 900 !important;
+  letter-spacing: .1px;
+}
+.chip-gray   { background:#2b3b7a !important; color:#ffffff !important; }
+.chip-green  { background:#16a34a !important; color:#ffffff !important; }
+.chip-purple { background:#6d28d9 !important; color:#ffffff !important; }
+.chip-red    { background:#dc2626 !important; color:#ffffff !important; }
+.chip-amber  { background:#d97706 !important; color:#0b0b0b !important; }
+
+/* ปุ่มเล็กในคอลัมน์ Actions – สีทึบ ชัด และ hover เด้ง */
+.btn{
+  border:none !important;
+  color:#fff !important;
+  font-weight: 900 !important;
+}
+.btn.small{ padding: 8px 12px !important; }
+.btn.ghost{ background:#1b254a !important; }
+.btn.primary{
+  background: linear-gradient(135deg, #7c4dff, #00e1ff) !important;
+  color:#081018 !important;
+}
+.btn.ok{ background:#16a34a !important; }
+.btn.warn{ background:#d97706 !important; color:#0b0b0b !important; }
+.btn.danger{ background:#dc2626 !important; }
+
+.btn:hover{
+  filter: brightness(1.12) !important;
+  transform: translateY(-1px);
+}
+
+/* search box ให้เส้นขอบสว่างตอนโฟกัส */
+.search{
+  background:#0b1120 !important;
+  border:1px solid #2c3e7a !important;
+}
+.search:focus{
+  border-color:#5ea7ff !important;
+  box-shadow: 0 0 0 3px rgba(94,167,255,.25) !important;
+}
+
+/* ทำให้คอลัมน์ Actions กว้างพอ ปุ่มไม่ชน */
+.col-actions{ width: 18% !important; }
+@media (max-width: 1140px){
+  .col-actions{ width: 22% !important; }
+}
+@media (max-width: 980px){
+  .col-actions{ width: 28% !important; }
+}
