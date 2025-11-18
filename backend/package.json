@@ -2,8 +2,8 @@
   "name": "gamehub-backend",
   "version": "1.0.0",
   "main": "src/server.js",
-  "license": "MIT",
   "scripts": {
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
