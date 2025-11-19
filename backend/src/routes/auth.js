@@ -9,6 +9,10 @@ const { sendMail } = require("../utils/mailer");
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:4000";
 
+// เปิด/ปิดระบบอีเมล จาก ENV
+const EMAIL_ENABLED =
+  String(process.env.EMAIL_ENABLED || "false").toLowerCase() === "true";
+
 // login status (จาก session)
 router.get("/me", (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Unauthorized" });
@@ -45,6 +49,7 @@ async function sendVerifyEmail(user) {
       <p style="color:#666">ลิงก์จะหมดอายุใน 24 ชั่วโมง</p>
     </div>
   `;
+
   await sendMail({
     to: user.email,
     subject: "GPX - ยืนยันอีเมลของคุณ",
@@ -53,7 +58,7 @@ async function sendVerifyEmail(user) {
   });
 }
 
-// ----- สมัครสมาชิก (ส่งลิงก์ยืนยัน) -----
+// ----- สมัครสมาชิก (ส่งลิงก์ยืนยัน ถ้าเปิดอีเมล) -----
 router.post("/register", async (req, res, next) => {
   try {
     const { username, email, password } = req.body || {};
@@ -68,19 +73,39 @@ router.post("/register", async (req, res, next) => {
       return res.status(409).json({ message: "อีเมลถูกใช้แล้ว" });
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    // ถ้าไม่ใช้ระบบอีเมล ให้ถือว่า verified ตั้งแต่แรก
     const user = await User.create({
       username,
       email,
       passwordHash,
-      emailVerified: false,
+      emailVerified: !EMAIL_ENABLED,
     });
 
-    await sendVerifyEmail(user); // ส่งลิงก์ยืนยัน
-    res.json({
-      ok: true,
-      message:
-        "ส่งลิงก์ยืนยันอีเมลแล้ว โปรดตรวจสอบกล่องจดหมายของคุณ",
-    });
+    if (EMAIL_ENABLED) {
+      try {
+        await sendVerifyEmail(user);
+        return res.json({
+          ok: true,
+          message:
+            "ส่งลิงก์ยืนยันอีเมลแล้ว โปรดตรวจสอบกล่องจดหมายของคุณ",
+        });
+      } catch (e) {
+        console.error("[auth/register] sendVerifyEmail error:", e);
+        // สมัครได้ แต่ส่งอีเมลล้มเหลว
+        return res.json({
+          ok: true,
+          message:
+            "สมัครสำเร็จ แต่ไม่สามารถส่งอีเมลยืนยันได้ กรุณาลอง 'ส่งลิงก์อีกครั้ง' ภายหลัง",
+        });
+      }
+    } else {
+      // โหมดไม่ใช้เมล
+      return res.json({
+        ok: true,
+        message: "สมัครสำเร็จ คุณสามารถล็อกอินได้ทันที",
+      });
+    }
   } catch (e) {
     next(e);
   }
@@ -109,6 +134,13 @@ router.get("/verify-email", async (req, res) => {
 
 // ----- Resend verify -----
 router.post("/resend-verify", async (req, res) => {
+  if (!EMAIL_ENABLED) {
+    return res.json({
+      ok: false,
+      message: "ระบบอีเมลถูกปิดอยู่ ไม่สามารถส่งลิงก์ยืนยันได้",
+    });
+  }
+
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ message: "ต้องระบุอีเมล" });
   const user = await User.findOne({ email });
@@ -122,7 +154,6 @@ router.post("/resend-verify", async (req, res) => {
 });
 
 // ----- ลืมรหัสผ่าน: ขอส่งลิงก์ reset -----
-// POST /api/auth/forgot-password  { email }
 router.post("/forgot-password", async (req, res, next) => {
   try {
     const { email } = req.body || {};
@@ -130,12 +161,20 @@ router.post("/forgot-password", async (req, res, next) => {
 
     const user = await User.findOne({ email });
 
-    // ไม่เผยว่าเจอหรือไม่ เพื่อความปลอดภัย
+    // ถ้าไม่มี user ก็ยังตอบเหมือนเดิมเพื่อความปลอดภัย
     if (!user || !user.email) {
       return res.json({
         ok: true,
         message:
           "ถ้าอีเมลนี้มีในระบบ เราได้ส่งลิงก์รีเซ็ตรหัสผ่านไปให้แล้ว",
+      });
+    }
+
+    if (!EMAIL_ENABLED) {
+      // ไม่มีระบบอีเมล → บอกผู้ใช้ตรง ๆ
+      return res.json({
+        ok: false,
+        message: "ขณะนี้ระบบอีเมลถูกปิดอยู่ ไม่สามารถรีเซ็ตรหัสผ่านผ่านอีเมลได้",
       });
     }
 
@@ -174,7 +213,6 @@ router.post("/forgot-password", async (req, res, next) => {
 });
 
 // ----- ตั้งรหัสผ่านใหม่จาก token -----
-// POST /api/auth/reset-password  { token, password }
 router.post("/reset-password", async (req, res, next) => {
   try {
     const { token, password } = req.body || {};
@@ -209,7 +247,8 @@ router.post("/reset-password", async (req, res, next) => {
   }
 });
 
-// ----- ล็อกอิน (บล็อกถ้ายังไม่ยืนยัน สำหรับ local account) -----
+// ----- ล็อกอิน -----
+// ถ้า EMAIL_ENABLED=false จะไม่บล็อกคนที่ emailVerified=false
 router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
@@ -224,11 +263,12 @@ router.post("/login", async (req, res) => {
         "บัญชีนี้สร้างด้วย OAuth โปรดล็อกอินด้วยปุ่ม Google/GitHub",
     });
 
-  if (!user.emailVerified)
+  if (EMAIL_ENABLED && !user.emailVerified) {
     return res.status(403).json({
       message:
         "ยังไม่ได้ยืนยันอีเมล โปรดตรวจสอบอีเมลหรือกดส่งลิงก์อีกครั้ง",
     });
+  }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok)
