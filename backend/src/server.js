@@ -1,7 +1,6 @@
 ﻿// backend/src/server.js
 require("dotenv").config();
 const path = require("path");
-const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -20,25 +19,14 @@ const app = express();
 connectDB();
 
 // ===== Env / Config =====
-const PORT = process.env.PORT || 4000;
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
+const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const isProd = process.env.NODE_ENV === "production";
 
-/**
- * ต้นทางของ API/CDN ที่จะใช้แทน localhost ในไฟล์เกมเวลา host จริง
- * ปรับค่าได้จาก ENV: CDN_ORIGIN / SERVER_URL / API_ORIGIN
- */
-const PUBLIC_ORIGIN =
-  process.env.CDN_ORIGIN ||
-  process.env.SERVER_URL ||
-  process.env.API_ORIGIN ||
-  (isProd
-    ? process.env.RENDER_EXTERNAL_URL || ""
-    : `http://localhost:${PORT}`) ||
-  `http://localhost:${PORT}`;
-
-console.log("[server] PUBLIC_ORIGIN =", PUBLIC_ORIGIN);
+// ใช้ SERVER_URL เป็น origin จริงของ backend (เช่น https://gpx-api-h6r0.onrender.com)
+const SERVER_ORIGIN =
+  (process.env.SERVER_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 
 // ถ้าอยู่หลัง proxy (Render) ให้ trust proxy
 app.set("trust proxy", 1);
@@ -60,8 +48,37 @@ app.use(cors(corsOptions));
 // preflight ทุก path
 app.options("*", cors(corsOptions));
 
+/**
+ * ===== Rewrite "localhost" URL ในทุก res.json =====
+ * ใช้ในกรณีที่ในฐานข้อมูลยังเก็บ URL เป็น http://localhost:4000/...
+ * เราจะแปลงให้เป็น SERVER_ORIGIN ก่อนส่งให้ frontend เสมอ
+ */
+const LOCAL_HOST_RE = /https?:\/\/localhost(?::\d+)?/gi;
+
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+
+  res.json = function (body) {
+    try {
+      if (body && typeof body === "object") {
+        let str = JSON.stringify(body);
+        LOCAL_HOST_RE.lastIndex = 0;
+        if (LOCAL_HOST_RE.test(str)) {
+          str = str.replace(LOCAL_HOST_RE, SERVER_ORIGIN);
+          return originalJson(JSON.parse(str));
+        }
+      }
+    } catch (err) {
+      console.error("[rewriteOrigin] error:", err);
+    }
+    return originalJson(body);
+  };
+
+  next();
+});
+
 // ===== Session + Passport =====
-// สำคัญ: ให้ cookie ข้ามโดเมนได้ ต้อง SameSite: 'none' + secure: true
+// สำคัญ: cookie ข้ามโดเมนได้ ต้อง SameSite: 'none' + secure: true
 app.use(
   session({
     secret: process.env.JWT_SECRET || "devsecret",
@@ -79,48 +96,6 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 require("./config/passport");
-
-/* ============================================================
-   🧩 ฟังก์ชันช่วย patch HTML ของ Unity/WebGL
-   - เปลี่ยน http://localhost:xxxx เป็น PUBLIC_ORIGIN
-   - แก้ path ที่ขึ้นต้นด้วย "/Build" ให้เป็น "Build" เฉย ๆ
-   ============================================================ */
-function patchUnityHTML(rawHtml) {
-  if (!rawHtml) return rawHtml;
-
-  return rawHtml
-    // แทน localhost ทุก port ด้วย PUBLIC_ORIGIN
-    .replace(/http:\/\/localhost:\d+/g, PUBLIC_ORIGIN)
-    .replace(/http:\/\/127\.0\.0\.1:\d+/g, PUBLIC_ORIGIN)
-    // กันเคส path เริ่มด้วย /Build ให้กลายเป็น relative path
-    .replace(/"\/Build/g, `"Build`)
-    .replace(/'\/Build/g, `'Build`);
-}
-
-/**
- * เสิร์ฟ index.html ของเกม โดยแก้เนื้อหาให้อัตโนมัติ
- * ต้องมาก่อน app.use("/uploads", express.static(...))
- */
-app.get("/uploads/*/index.html", (req, res, next) => {
-  try {
-    // req.path เช่น /uploads/xxxx/Build/index.html
-    const relPath = req.path.replace(/^\/uploads[\\/]/, "");
-    const filePath = path.join(uploadsDir, relPath);
-
-    if (!fs.existsSync(filePath)) {
-      return next(); // ให้ static ไปจัดการ 404 ต่อ
-    }
-
-    let html = fs.readFileSync(filePath, "utf8");
-    html = patchUnityHTML(html);
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.send(html);
-  } catch (err) {
-    console.error("[unity-html] error:", err);
-    return next(err);
-  }
-});
 
 // ===== Static uploads (Unity/WebGL ฯลฯ) =====
 app.use(
