@@ -6,8 +6,22 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const { sendMail } = require("../utils/mailer");
 
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
-const SERVER_URL = process.env.SERVER_URL || "http://localhost:4000";
+// ใช้ค่า URL จาก ENV ให้ชัดเจน
+// - เวลา run บน Render ต้องตั้ง CLIENT_URL และ SERVER_URL ให้ถูก
+// - ตอน dev ในเครื่องถ้าไม่ได้ตั้ง ENV จะ fallback เป็น localhost
+const isProd = String(process.env.NODE_ENV).toLowerCase() === "production";
+
+const CLIENT_URL =
+  process.env.CLIENT_URL || (isProd ? "" : "http://localhost:5173");
+
+const SERVER_URL =
+  process.env.SERVER_URL || (isProd ? "" : "http://localhost:4000");
+
+if (isProd && (!CLIENT_URL || !SERVER_URL)) {
+  console.warn(
+    "[auth] WARNING: In production but CLIENT_URL or SERVER_URL is missing. Email links may be incorrect."
+  );
+}
 
 // เปิด/ปิดระบบอีเมล จาก ENV
 const EMAIL_ENABLED =
@@ -34,6 +48,13 @@ router.get("/logout", (req, res) => {
 
 // ----- helper: ส่งอีเมลยืนยัน -----
 async function sendVerifyEmail(user) {
+  if (!SERVER_URL) {
+    console.error(
+      "[auth/sendVerifyEmail] SERVER_URL is not set. Cannot generate verification link."
+    );
+    throw new Error("SERVER_URL not configured");
+  }
+
   const token = crypto.randomBytes(32).toString("hex");
   user.emailVerifyToken = token;
   user.emailVerifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 ชม.
@@ -82,7 +103,7 @@ router.post("/register", async (req, res, next) => {
       emailVerified: !EMAIL_ENABLED,
     });
 
-    if (EMAIL_ENABLED) {
+    if ( EMAIL_ENABLED ) {
       try {
         await sendVerifyEmail(user);
         return res.json({
@@ -129,7 +150,7 @@ router.get("/verify-email", async (req, res) => {
   user.emailVerifyExpires = undefined;
   await user.save();
 
-  return res.redirect(`${CLIENT_URL}?verified=1`);
+  return res.redirect(`${CLIENT_URL || "/"}` + "?verified=1");
 });
 
 // ----- Resend verify -----
@@ -174,7 +195,8 @@ router.post("/forgot-password", async (req, res, next) => {
       // ไม่มีระบบอีเมล → บอกผู้ใช้ตรง ๆ
       return res.json({
         ok: false,
-        message: "ขณะนี้ระบบอีเมลถูกปิดอยู่ ไม่สามารถรีเซ็ตรหัสผ่านผ่านอีเมลได้",
+        message:
+          "ขณะนี้ระบบอีเมลถูกปิดอยู่ ไม่สามารถรีเซ็ตรหัสผ่านผ่านอีเมลได้",
       });
     }
 
@@ -289,7 +311,7 @@ router.get(
 router.get(
   "/github/callback",
   passport.authenticate("github", { failureRedirect: "/?auth=failed" }),
-  (_req, res) => res.redirect(CLIENT_URL)
+  (_req, res) => res.redirect(CLIENT_URL || "/")
 );
 
 // ---------- Google OAuth ----------
@@ -303,7 +325,7 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", { failureRedirect: "/?auth=failed" }),
-  (_req, res) => res.redirect(CLIENT_URL)
+  (_req, res) => res.redirect(CLIENT_URL || "/")
 );
 
 module.exports = router;
