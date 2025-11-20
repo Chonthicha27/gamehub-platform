@@ -1,73 +1,67 @@
 // backend/src/utils/mailer.js
-const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 const {
-  SMTP_HOST,
-  SMTP_PORT = 587,
-  SMTP_USER,
-  SMTP_PASS,
+  EMAIL_ENABLED = "false",
   MAIL_FROM = '"GPX" <no-reply@example.com>',
-  EMAIL_ENABLED,
+  EMAIL_API_KEY, // API key จาก Brevo (หรือ provider อื่นที่ใช้)
 } = process.env;
 
-const emailEnabled =
-  String(EMAIL_ENABLED || "false").toLowerCase() === "true";
-
-let transporter = null;
-
-if (
-  emailEnabled &&
-  SMTP_HOST &&
-  SMTP_USER &&
-  SMTP_PASS
-) {
-  const port = Number(SMTP_PORT);
-  const secure = port === 465; // 465=SSL, 587=STARTTLS
-
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port,
-    secure,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    requireTLS: !secure,
-    logger: true,
-    debug: true,
-  });
-
-  console.log("[mail] EMAIL_ENABLED=true, transporter created");
-} else {
-  console.log(
-    "[mail] EMAIL_ENABLED=false หรือ SMTP config ไม่ครบ → จะไม่ส่งอีเมลจริง (simulate send only)"
-  );
-}
+const emailEnabled = String(EMAIL_ENABLED).toLowerCase() === "true";
 
 /**
- * ส่งอีเมล (ถ้า transporter ไม่มี จะ log แล้วคืนค่าเฉย ๆ)
+ * ส่งอีเมลผ่าน HTTP API (Brevo)
+ * ถ้าไม่ได้เปิด EMAIL_ENABLED หรือไม่มี API key → จะไม่ส่งจริง แค่ log
  */
 async function sendMail({ to, subject, html, text }) {
-  // โหมดปิดเมล / ไม่มี config → แค่ log แล้ว return
-  if (!transporter) {
-    console.log(
-      "[mail] Skip sending email (disabled or no transporter).",
-      { to, subject }
-    );
-    return { skipped: true };
+  if (!emailEnabled) {
+    console.log("[mail] Skip send: EMAIL_ENABLED = false", { to, subject });
+    return { skipped: true, reason: "EMAIL_ENABLED=false" };
   }
 
+  if (!EMAIL_API_KEY) {
+    console.warn("[mail] Skip send: missing EMAIL_API_KEY", { to, subject });
+    return { skipped: true, reason: "Missing EMAIL_API_KEY" };
+  }
+
+  // ดึง email จริงออกจาก MAIL_FROM ("Name" <email@xxx>)
+  const emailMatch = MAIL_FROM.match(/<(.*)>/);
+  const senderEmail = emailMatch ? emailMatch[1] : MAIL_FROM;
+
+  // ชื่อที่จะแสดงในเมล
+  const nameMatch = MAIL_FROM.match(/"([^"]+)"/);
+  const senderName = nameMatch ? nameMatch[1] : "GPX";
+
   try {
-    const info = await transporter.sendMail({
-      from: MAIL_FROM,
-      to,
-      subject,
-      text,
-      html,
-    });
-    console.log("[mail] Sent ok:", info.messageId || "");
-    return info;
+    const res = await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          email: senderEmail,
+          name: senderName,
+        },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      },
+      {
+        headers: {
+          "api-key": EMAIL_API_KEY,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    console.log("[mail] Email sent via API to:", to);
+    return res.data;
   } catch (err) {
-    console.error("[mail] Send error:", err);
-    // ไม่โยน error ต่อ เพื่อไม่ให้ไปทำให้ API พัง
-    return { error: err };
+    console.error(
+      "[mail] API send error:",
+      err.response?.data || err.message
+    );
+    return { error: err.message, data: err.response?.data };
   }
 }
 
