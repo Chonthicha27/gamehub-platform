@@ -18,6 +18,8 @@ const monthlyVoteRoutes = require("./routes/monthlyVote");
 const app = express();
 connectDB();
 
+// ✅ เวลาใช้เครื่องตัวเองเป็น Host ให้ตั้ง CLIENT_URL เป็น URL จริงที่คนจะเปิด เช่น
+// http://192.168.1.114:5173  (ตั้งในไฟล์ .env)
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
@@ -101,7 +103,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api", commentsRoutes);       // comments
-app.use("/api", monthlyVoteRoutes);    // ✅ monthly vote (รวม /games/:id/monthly-vote และ /monthly-vote/leaderboard)
+app.use("/api", monthlyVoteRoutes);    // monthly vote
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -119,6 +121,8 @@ app.use((err, _req, res, next) => {
   next();
 });
 
-app.listen(PORT, () => {
-  console.log(`API running http://localhost:${PORT}`);
+// ✅ ฟังทุก IP (0.0.0.0) ให้เครื่องอื่นในวงแลนยิงเข้ามาได้
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`API running on http://0.0.0.0:${PORT} (PORT=${PORT})`);
+  console.log(`CORS origin: ${ORIGIN}`);
 });

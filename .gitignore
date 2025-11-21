@@ -1,0 +1,18 @@
+# node modules
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# env / secret
+.env
+frontend/.env
+backend/.env
+
+# build output
+dist/
+frontend/dist/
+backend/dist/
+
+# uploads (ไฟล์เกม/รูปใหญ่ๆ)
+uploads/
+tmp/
