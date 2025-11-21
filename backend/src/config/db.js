@@ -1,18 +1,13 @@
 ﻿// backend/src/config/db.js
 const mongoose = require("mongoose");
 
-// ถ้าไม่ตั้งค่า env เลย จะ fallback มาใช้ localhost
-const DEFAULT_LOCAL_URI = "mongodb://127.0.0.1:27017/gpx";
-
 async function connectDB() {
-  // รองรับทั้งชื่อใหม่ MONGO_URI และชื่อเดิม MONGO_URL
-  const uri =
-    process.env.MONGO_URI ||
-    process.env.MONGO_URL ||
-    DEFAULT_LOCAL_URI;
+  // ใช้ค่าจาก ENV เท่านั้น (ไม่ fallback ไป localhost)
+  const uri = process.env.MONGO_URI || process.env.MONGO_URL;
 
   if (!uri) {
-    throw new Error("Missing MONGO_URI / MONGO_URL");
+    console.error("[db] ❌ MONGO_URI / MONGO_URL is not set");
+    process.exit(1);
   }
 
   try {
@@ -22,10 +17,10 @@ async function connectDB() {
 
     const isAtlas = uri.startsWith("mongodb+srv://");
     console.log(
-      `✅ MongoDB connected (${isAtlas ? "Atlas" : "local"})`
+      `✅ MongoDB connected (${isAtlas ? "Atlas" : "Mongo"})`
     );
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.error("[db] ❌ MongoDB connection error:", err);
     process.exit(1);
   }
 }
