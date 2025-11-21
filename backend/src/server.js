@@ -18,11 +18,16 @@ const monthlyVoteRoutes = require("./routes/monthlyVote");
 const app = express();
 connectDB();
 
+// ===== Env / Config =====
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
+// โฟลเดอร์ build ของ frontend (ต้องมี frontend/dist ก่อนนะ)
+const clientDir = path.join(__dirname, "..", "frontend", "dist");
+const isProd = process.env.NODE_ENV === "production";
 
-app.set("trust proxy", 1); // ถ้า reverse proxy ในอนาคต
+// ถ้าอยู่หลัง proxy (Replit/อื่น ๆ) ให้ trust proxy
+app.set("trust proxy", 1);
 
 // ===== Parsers =====
 app.use(express.json({ limit: "20mb" }));
@@ -31,7 +36,7 @@ app.use(cookieParser());
 
 // ===== CORS =====
 const corsOptions = {
-  origin: ORIGIN,
+  origin: ORIGIN, // บน Replit ให้ตั้ง CLIENT_URL เป็น URL ของ Repl
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -42,20 +47,21 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // ===== Session + Passport =====
-const cookieSecure =
-  String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
-
+// ใช้ cookie แบบให้ข้ามโดเมนได้ในโหมด production
 app.use(
   session({
     secret: process.env.JWT_SECRET || "devsecret",
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
-      sameSite: "lax",
-      secure: cookieSecure,
+      httpOnly: true,
+      secure: isProd,              // prod (บน Replit) → https
+      sameSite: isProd ? "none" : "lax",
     },
   })
 );
+
 app.use(passport.initialize());
 app.use(passport.session());
 require("./config/passport");
@@ -95,16 +101,29 @@ app.use(
   })
 );
 
-// ===== Routes (public/user/admin) =====
+// ===== API Routes (public/user/admin) =====
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api", commentsRoutes);       // comments
-app.use("/api", monthlyVoteRoutes);    // ✅ monthly vote (รวม /games/:id/monthly-vote และ /monthly-vote/leaderboard)
+app.use("/api", commentsRoutes);    // comments
+app.use("/api", monthlyVoteRoutes); // monthly vote
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+// ===== Serve frontend (React build) =====
+
+// เสิร์ฟไฟล์ static จาก frontend/dist
+app.use(express.static(clientDir));
+
+// SPA fallback: ถ้าไม่ใช่ /api หรือ /uploads ให้ส่ง index.html
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+    return res.status(404).json({ message: "Not found" });
+  }
+  res.sendFile(path.join(clientDir, "index.html"));
+});
 
 // ===== Error handler =====
 app.use((err, _req, res, next) => {
