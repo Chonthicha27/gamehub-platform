@@ -22,8 +22,12 @@ connectDB();
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
-// โฟลเดอร์ build ของ frontend (ต้องมี frontend/dist ก่อนนะ)
-const clientDir = path.join(__dirname, "..", "frontend", "dist");
+
+// 🔴 เดิม: path.join(__dirname, "..", "frontend", "dist")
+// แต่ตอนนี้โครงคือ root/frontend/dist (เป็นพี่น้องกับ backend)
+// backend/src/server.js → ขึ้นไปสองขั้นถึง root → frontend/dist
+const clientDir = path.join(__dirname, "..", "..", "frontend", "dist");
+
 const isProd = process.env.NODE_ENV === "production";
 
 // ถ้าอยู่หลัง proxy (Replit/อื่น ๆ) ให้ trust proxy
@@ -36,7 +40,7 @@ app.use(cookieParser());
 
 // ===== CORS =====
 const corsOptions = {
-  origin: ORIGIN, // บน Replit ให้ตั้ง CLIENT_URL เป็น URL ของ Repl
+  origin: ORIGIN, // บน Replit ให้ตั้ง CLIENT_URL เป็น URL ของ Repl ถ้าใช้ cross-domain
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -56,7 +60,7 @@ app.use(
     proxy: true,
     cookie: {
       httpOnly: true,
-      secure: isProd,              // prod (บน Replit) → https
+      secure: isProd, // prod → https
       sameSite: isProd ? "none" : "lax",
     },
   })
@@ -106,7 +110,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api", commentsRoutes);    // comments
+app.use("/api", commentsRoutes); // comments
 app.use("/api", monthlyVoteRoutes); // monthly vote
 
 // Health check
