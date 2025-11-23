@@ -1,15 +1,14 @@
-# ทั้งโปรเจกต์
+# root
 node_modules/
-dist/
 .env
 
-# Backend
+# backend
 /backend/.env
 /backend/node_modules/
 /backend/uploads/
 /backend/tmp/
 
-# Frontend
+# frontend
 /frontend/node_modules/
 /frontend/dist/
 /frontend/.vite/
