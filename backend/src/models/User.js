@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema(
       sparse: true,
     },
     githubId: { type: String, index: true, unique: true, sparse: true },
-    googleId: { type: String, index: true, unique: true, sparse: true }, // เพิ่มเพื่อรองรับ Google
+    googleId: { type: String, index: true, unique: true, sparse: true }, // รองรับ Google OAuth
     passwordHash: { type: String }, // local account เท่านั้น
 
     // ===== บทบาท =====
@@ -76,7 +76,7 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
     toJSON: {
-      virtuals: true,
+      virtuals: true, // ✅ ให้ส่ง virtual fields (เช่น isAdmin) ออกมาด้วย
       transform(_doc, ret) {
         // ไม่ส่งข้อมูลสำคัญออกไป
         delete ret.passwordHash;
@@ -90,5 +90,10 @@ const userSchema = new mongoose.Schema(
     },
   }
 );
+
+// ✅ virtual สำหรับเช็กสิทธิ์แอดมินจาก role ใน MongoDB
+userSchema.virtual("isAdmin").get(function () {
+  return this.role === "admin";
+});
 
 module.exports = mongoose.model("User", userSchema);

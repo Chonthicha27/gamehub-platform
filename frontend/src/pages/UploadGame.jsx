@@ -1,32 +1,38 @@
-//UploadGame.jsx
+// frontend/src/pages/UploadGame.jsx
 import { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 
 /** หมวดหมู่หลัก (ใช้ตอนอัปโหลดเกม) */
 const CATEGORIES = [
-  { id: "no-genre",       name: "No genre",        emoji: "—",   color: "#9ca3af" },
-  { id: "action",         name: "Action",          emoji: "🗡️",  color: "#f97373" },
-  { id: "adventure",      name: "Adventure",       emoji: "🧭",   color: "#38bdf8" },
-  { id: "card-game",      name: "Card Game",       emoji: "🃏",   color: "#fb7185" },
-  { id: "educational",    name: "Educational",     emoji: "📚",   color: "#4ade80" },
-  { id: "fighting",       name: "Fighting",        emoji: "⚔️",   color: "#f97316" },
+  { id: "no-genre", name: "No genre", emoji: "—", color: "#9ca3af" },
+  { id: "action", name: "Action", emoji: "🗡️", color: "#f97373" },
+  { id: "adventure", name: "Adventure", emoji: "🧭", color: "#38bdf8" },
+  { id: "card-game", name: "Card Game", emoji: "🃏", color: "#fb7185" },
+  { id: "educational", name: "Educational", emoji: "📚", color: "#4ade80" },
+  { id: "fighting", name: "Fighting", emoji: "⚔️", color: "#f97316" },
   { id: "interactive-fiction", name: "Interactive Fiction", emoji: "📖", color: "#a855f7" },
-  { id: "platformer",     name: "Platformer",      emoji: "🕹️",  color: "#22c55e" },
-  { id: "puzzle",         name: "Puzzle",          emoji: "🧩",   color: "#60a5fa" },
-  { id: "racing",         name: "Racing",          emoji: "🏎️",   color: "#facc15" },
-  { id: "rhythm",         name: "Rhythm",          emoji: "🎵",   color: "#f472b6" },
-  { id: "role-playing",   name: "Role Playing",    emoji: "🧙‍♂️",  color: "#0ea5e9" },
-  { id: "shooter",        name: "Shooter",         emoji: "🎯",   color: "#fb923c" },
-  { id: "simulation",     name: "Simulation",      emoji: "🏡",   color: "#34d399" },
-  { id: "sports",         name: "Sports",          emoji: "🏀",   color: "#a3e635" },
-  { id: "strategy",       name: "Strategy",        emoji: "♟️",   color: "#22d3ee" },
-  { id: "survival",       name: "Survival",        emoji: "🪓",   color: "#f97373" },
-  { id: "visual-novel",   name: "Visual Novel",    emoji: "💬",   color: "#c4b5fd" },
-  { id: "other",          name: "Other",           emoji: "✨",   color: "#9ca3af" },
+  { id: "platformer", name: "Platformer", emoji: "🕹️", color: "#22c55e" },
+  { id: "puzzle", name: "Puzzle", emoji: "🧩", color: "#60a5fa" },
+  { id: "racing", name: "Racing", emoji: "🏎️", color: "#facc15" },
+  { id: "rhythm", name: "Rhythm", emoji: "🎵", color: "#f472b6" },
+  { id: "role-playing", name: "Role Playing", emoji: "🧙‍♂️", color: "#0ea5e9" },
+  { id: "shooter", name: "Shooter", emoji: "🎯", color: "#fb923c" },
+  { id: "simulation", name: "Simulation", emoji: "🏡", color: "#34d399" },
+  { id: "sports", name: "Sports", emoji: "🏀", color: "#a3e635" },
+  { id: "strategy", name: "Strategy", emoji: "♟️", color: "#22d3ee" },
+  { id: "survival", name: "Survival", emoji: "🪓", color: "#f97373" },
+  { id: "visual-novel", name: "Visual Novel", emoji: "💬", color: "#c4b5fd" },
+  { id: "other", name: "Other", emoji: "✨", color: "#9ca3af" },
 ];
 
 /** ย่อรูปด้วย Canvas (รักษาอัตราส่วน) */
-async function resizeImage(file, maxW = 1200, maxH = 675, mime = "image/jpeg", quality = 0.9) {
+async function resizeImage(
+  file,
+  maxW = 1200,
+  maxH = 675,
+  mime = "image/jpeg",
+  quality = 0.9
+) {
   const bitmap = await createImageBitmap(file);
   let { width, height } = bitmap;
   const scale = Math.min(maxW / width, maxH / height, 1);
@@ -43,7 +49,9 @@ async function resizeImage(file, maxW = 1200, maxH = 675, mime = "image/jpeg", q
     canvas.toBlob(
       (blob) =>
         resolve(
-          new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"), { type: mime })
+          new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"), {
+            type: mime,
+          })
         ),
       mime,
       quality
@@ -76,13 +84,13 @@ export default function UploadGame() {
   const [screenPreviews, setScreenPreviews] = useState([]);
 
   // media เพิ่มเติม
-  const [trailerUrl, setTrailerUrl] = useState("");          // ลิงก์วิดีโอ (เช่น YouTube)
-  const [extraImages, setExtraImages] = useState([]);        // รูปภาพเพิ่มเติม
-  const [extraPreviews, setExtraPreviews] = useState([]);    // พรีวิวรูปเพิ่มเติม
+  const [trailerUrl, setTrailerUrl] = useState(""); // ลิงก์วิดีโอ (เช่น YouTube)
+  const [extraImages, setExtraImages] = useState([]); // รูปภาพเพิ่มเติม
+  const [extraPreviews, setExtraPreviews] = useState([]); // พรีวิวรูปเพิ่มเติม
 
   // options
   const [communityMode, setCommunityMode] = useState("comments"); // off | comments
-  const [visibility, setVisibility] = useState("public");         // review | public
+  const [visibility, setVisibility] = useState("public"); // review | public
 
   // Kind of project
   const [kind, setKind] = useState("html"); // 'html' | 'download'
@@ -249,7 +257,8 @@ export default function UploadGame() {
         withCredentials: true,
         headers: { ...authHeader },
         onUploadProgress: (ev) => {
-          if (ev.total) setProgress(Math.round((ev.loaded * 100) / ev.total));
+          if (ev.total)
+            setProgress(Math.round((ev.loaded * 100) / ev.total));
         },
       });
 
@@ -259,15 +268,25 @@ export default function UploadGame() {
     } catch (err) {
       const code = err?.response?.status;
       if (code === 401)
-        setMsg("ยังไม่ได้ล็อกอิน (Unauthorized) — กรุณาเข้าสู่ระบบก่อนอัปโหลด");
-      else setMsg(err?.response?.data?.message || err.message || "อัปโหลดล้มเหลว");
+        setMsg(
+          "ยังไม่ได้ล็อกอิน (Unauthorized) — กรุณาเข้าสู่ระบบก่อนอัปโหลด"
+        );
+      else
+        setMsg(
+          err?.response?.data?.message ||
+            err.message ||
+            "อัปโหลดล้มเหลว"
+        );
     } finally {
       setBusy(false);
       setTimeout(() => setProgress(0), 800);
     }
   };
 
-  const currentCat = CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
+  const currentCat =
+    CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
+
+  const isSuccess = msg.startsWith("อัปโหลดสำเร็จ");
 
   return (
     <div className="container section">
@@ -278,7 +297,8 @@ export default function UploadGame() {
           <div>
             <h1 className="tx-gradient up-title">Upload your game</h1>
             <p className="up-sub">
-              อัปโหลดเกมให้ดูดีตั้งแต่แรกเห็น — ใส่หน้าปก สกรีนช็อต วิดีโอ แท็ก และรายละเอียดแบบครบ ๆ
+              อัปโหลดเกมให้ดูดีตั้งแต่แรกเห็น — ใส่หน้าปก
+              สกรีนช็อต วิดีโอ แท็ก และรายละเอียดแบบครบ ๆ
             </p>
           </div>
           <div className="up-hints">
@@ -332,6 +352,46 @@ export default function UploadGame() {
               onChange={(e) => setDescription(e.target.value)}
             />
 
+            {/* tags */}
+            <label className="up-label">แท็ก (สูงสุด 10 แท็ก)</label>
+            <div className="tag-wrap">
+              <input
+                className="up-input"
+                placeholder="เช่น pixel-art, roguelike, cozy"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn-tag-add"
+                onClick={addTag}
+              >
+                เพิ่มแท็ก
+              </button>
+            </div>
+            {!!tags.length && (
+              <div className="chips">
+                {tags.map((t) => (
+                  <span key={t} className="chip">
+                    #{t}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(t)}
+                      aria-label={`remove ${t}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="up-row">
               <div className="col">
                 <label className="up-label">หมวดหมู่</label>
@@ -342,7 +402,10 @@ export default function UploadGame() {
                     onClick={() => setCatOpen((v) => !v)}
                     style={{ borderColor: currentCat.color }}
                   >
-                    <span className="cat-dot" style={{ background: currentCat.color }} />
+                    <span
+                      className="cat-dot"
+                      style={{ background: currentCat.color }}
+                    />
                     <span className="cat-emoji">{currentCat.emoji}</span>
                     <span className="cat-name">{currentCat.name}</span>
                     <svg
@@ -356,17 +419,25 @@ export default function UploadGame() {
                   </button>
 
                   {catOpen && (
-                    <div className="cat-menu" onMouseLeave={() => setCatOpen(false)}>
+                    <div
+                      className="cat-menu"
+                      onMouseLeave={() => setCatOpen(false)}
+                    >
                       {CATEGORIES.map((c) => (
                         <div
                           key={c.id}
-                          className={`cat-item ${c.id === category ? "is-active" : ""}`}
+                          className={`cat-item ${
+                            c.id === category ? "is-active" : ""
+                          }`}
                           onClick={() => {
                             setCategory(c.id);
                             setCatOpen(false);
                           }}
                         >
-                          <span className="cat-dot" style={{ background: c.color }} />
+                          <span
+                            className="cat-dot"
+                            style={{ background: c.color }}
+                          />
                           <span className="cat-emoji">{c.emoji}</span>
                           <span className="cat-name">{c.name}</span>
                         </div>
@@ -379,7 +450,11 @@ export default function UploadGame() {
               <div className="col">
                 <label className="up-label">ชุมชน</label>
                 <div className="pill-row">
-                  <label className={`pill ${communityMode === "off" ? "is-on" : ""}`}>
+                  <label
+                    className={`pill ${
+                      communityMode === "off" ? "is-on" : ""
+                    }`}
+                  >
                     <input
                       type="radio"
                       name="community"
@@ -389,7 +464,11 @@ export default function UploadGame() {
                     />
                     ปิดการมีส่วนร่วม
                   </label>
-                  <label className={`pill ${communityMode === "comments" ? "is-on" : ""}`}>
+                  <label
+                    className={`pill ${
+                      communityMode === "comments" ? "is-on" : ""
+                    }`}
+                  >
                     <input
                       type="radio"
                       name="community"
@@ -418,7 +497,9 @@ export default function UploadGame() {
                     onClick={() => setVisibility("public")}
                   >
                     <span>🌐 สาธารณะ</span>
-                    <span className="vis-sub">ทุกคนค้นหาและเข้าเล่นได้</span>
+                    <span className="vis-sub">
+                      ทุกคนค้นหาและเข้าเล่นได้
+                    </span>
                   </button>
 
                   <button
@@ -441,12 +522,17 @@ export default function UploadGame() {
 
             {/* Kind of project */}
             <label className="up-label">Kind of project</label>
-            <select className="up-input" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <select
+              className="up-input"
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+            >
               <option value="download">
                 Downloadable — You only have files to be downloaded (.rar)
               </option>
               <option value="html">
-                HTML — You have a ZIP or HTML file that will be played in the browser
+                HTML — You have a ZIP or HTML file that will be played in the
+                browser
               </option>
             </select>
           </section>
@@ -457,14 +543,26 @@ export default function UploadGame() {
 
             <div className="up-field">
               <label className="up-label">
-                {kind === "html" ? "ไฟล์เกมหลัก (.html / .zip)" : "ไฟล์เกมหลัก (.rar)"}
+                {kind === "html"
+                  ? "ไฟล์เกมหลัก (.html / .zip)"
+                  : "ไฟล์เกมหลัก (.rar)"}
               </label>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept={acceptForKind}
-                onChange={(e) => setGameFile(e.target.files?.[0] || null)}
+                onChange={(e) =>
+                  setGameFile(e.target.files?.[0] || null)
+                }
               />
+              {gameFile && (
+                <div className="file-name tiny">
+                  📁 {gameFile.name}{" "}
+                  <span className="muted">
+                    ({(gameFile.size / 1024 / 1024).toFixed(1)} MB)
+                  </span>
+                </div>
+              )}
               <div className="muted tiny">
                 {kind === "html"
                   ? "แนะนำ .zip ที่แตกแล้วมี index.html เพื่อเล่นบนเว็บ"
@@ -473,7 +571,9 @@ export default function UploadGame() {
             </div>
 
             <div className="up-field">
-              <label className="up-label">ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)</label>
+              <label className="up-label">
+                ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)
+              </label>
               <input
                 ref={coverInputRef}
                 type="file"
@@ -490,7 +590,9 @@ export default function UploadGame() {
             </div>
 
             <div className="up-field">
-              <label className="up-label">สกรีนช็อต (สูงสุด 5 รูป)</label>
+              <label className="up-label">
+                สกรีนช็อต (สูงสุด 5 รูป)
+              </label>
               <input
                 ref={screensInputRef}
                 type="file"
@@ -511,7 +613,9 @@ export default function UploadGame() {
 
             {/* วิดีโอตัวอย่าง */}
             <div className="up-field">
-              <label className="up-label">วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)</label>
+              <label className="up-label">
+                วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)
+              </label>
               <input
                 className="up-input"
                 type="url"
@@ -520,13 +624,16 @@ export default function UploadGame() {
                 onChange={(e) => setTrailerUrl(e.target.value)}
               />
               <div className="muted tiny">
-                ใช้ลิงก์ฝังจากแพลตฟอร์มวิดีโอ แนะนำ YouTube (จะไปใช้แสดงในหน้าเกมภายหลัง)
+                ใช้ลิงก์ฝังจากแพลตฟอร์มวิดีโอ แนะนำ YouTube
+                (จะไปใช้แสดงในหน้าเกมภายหลัง)
               </div>
             </div>
 
             {/* รูปภาพเพิ่มเติม */}
             <div className="up-field">
-              <label className="up-label">รูปภาพเพิ่มเติม (เช่น Poster / UI / Art, สูงสุด 10 รูป)</label>
+              <label className="up-label">
+                รูปภาพเพิ่มเติม (เช่น Poster / UI / Art, สูงสุด 10 รูป)
+              </label>
               <input
                 ref={extrasInputRef}
                 type="file"
@@ -547,19 +654,61 @@ export default function UploadGame() {
 
             {progress > 0 && (
               <div className="progress">
-                <div className="bar" style={{ width: `${progress}%` }} />
+                <div
+                  className="bar"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             )}
 
             {msg && <div className="alert">{msg}</div>}
 
+            {/* ปุ่มฉลาดๆ ด้านล่าง */}
             <div className="btn-row">
-              <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={busy}>
-                ล้างฟอร์ม
-              </button>
-              <button className="btn btn-primary" type="submit" disabled={busy}>
-                {busy ? "กำลังอัปโหลด…" : "อัปโหลดเกม"}
-              </button>
+              <div className="btn-row__left">
+                <span className="muted tiny">
+                  {busy
+                    ? "กำลังอัปโหลดไฟล์ของคุณขึ้น GPX… อย่าปิดหน้านี้จนกว่าจะเสร็จ"
+                    : "เมื่อกดอัปโหลด ระบบจะสร้างหน้ารายละเอียดเกมให้ และเกมจะอยู่ตามการมองเห็นที่คุณเลือก"}
+                </span>
+              </div>
+              <div className="btn-row__right">
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={resetForm}
+                  disabled={busy}
+                >
+                  ล้างฟอร์ม
+                </button>
+                <button
+                  className={`btn btn-primary ${
+                    !busy && isSuccess ? "btn-primary--success" : ""
+                  }`}
+                  type="submit"
+                  disabled={busy}
+                >
+                  {busy ? (
+                    <>
+                      <span className="btn-spinner" />
+                      <span>
+                        กำลังอัปโหลด…
+                        {progress > 0 ? ` ${progress}%` : ""}
+                      </span>
+                    </>
+                  ) : isSuccess ? (
+                    <>
+                      <span>✅</span>
+                      <span>อัปโหลดสำเร็จ! อัปโหลดอีกเกม</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🚀</span>
+                      <span>อัปโหลดเกม</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </section>
         </form>
@@ -675,7 +824,22 @@ function StyleLocal() {
 }
 
 /* tags */
-.tag-wrap{ display:flex; gap:8px; align-items:center }
+.tag-wrap{ display:flex; gap:8px; align-items:center; margin-top:4px }
+.btn-tag-add{
+  white-space:nowrap;
+  padding:9px 12px;
+  border-radius:999px;
+  border:1px dashed var(--stroke);
+  background:rgba(15,23,42,.9);
+  color:#e5f2ff;
+  font-size:13px;
+  cursor:pointer;
+  transition:.16s ease;
+}
+.btn-tag-add:hover{
+  border-color:#60a5fa;
+  background:rgba(37,99,235,.35);
+}
 .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
 .chip{
   display:inline-flex; align-items:center; gap:8px;
@@ -717,15 +881,66 @@ function StyleLocal() {
   background:rgba(255,255,255,.04); border:1px solid var(--stroke); color:#eaf4ff; font-size:14px;
 }
 
-.btn-row{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
+.btn-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+  margin-top:14px;
+}
+.btn-row__left{
+  flex:1 1 200px;
+  min-width:0;
+}
+.btn-row__right{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex:0 0 auto;
+}
+
 .btn{
   appearance:none; border:none; outline:none; cursor:pointer;
   padding:10px 14px; border-radius:12px; background:var(--glass); color:var(--text);
   border:1px solid var(--stroke); transition:.2s ease;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:14px;
 }
 .btn:hover{ transform:translateY(-1px); box-shadow:0 12px 28px rgba(0,0,0,.35) }
-.btn-primary{ background:linear-gradient(135deg, #59e0ff, #35c4ff); color:#041318; border:none }
+.btn-primary{
+  background:linear-gradient(135deg, #59e0ff, #35c4ff); color:#041318; border:none;
+}
+.btn-primary--success{
+  background:linear-gradient(135deg,#22c55e,#4ade80);
+}
 .btn-ghost{ background:transparent }
+
+.btn[disabled]{
+  opacity:.65;
+  cursor:default;
+  transform:none;
+  box-shadow:none;
+}
+
+.btn-spinner{
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  border:2px solid rgba(15,23,42,.4);
+  border-top-color:#e5f4ff;
+  display:inline-block;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{
+  to{ transform:rotate(360deg); }
+}
+
+.file-name{ margin-top:4px }
+
+/* misc */
 .tiny{ font-size:12px }
 `}</style>
   );

@@ -14,24 +14,34 @@ function readJwt(req) {
   const bearer = hdr.startsWith("Bearer ") ? hdr.slice(7) : null;
   return req.cookies?.token || bearer;
 }
+
 function getAuthedUserId(req) {
   if (req.user?._id) return String(req.user._id);
   const token = readJwt(req);
   if (!token) return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET || "devsecret");
-    return payload?.uid ? String(payload.uid) : payload?.id ? String(payload.id) : null;
+    return payload?.uid
+      ? String(payload.uid)
+      : payload?.id
+      ? String(payload.id)
+      : null;
   } catch {
     return null;
   }
 }
-const USER_SAFE_PROJECTION =
-  "_id username email githubId displayName bio avatarUrl bannerUrl links favorites createdAt updatedAt";
 
-function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
+// ✅ เพิ่ม role / status / emailVerified เข้า projection ด้วย
+const USER_SAFE_PROJECTION =
+  "_id username email githubId googleId displayName bio avatarUrl bannerUrl links favorites role status emailVerified createdAt updatedAt";
+
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
 const avatarsDir = path.join(process.cwd(), "uploads", "avatars");
 const bannersDir = path.join(process.cwd(), "uploads", "banners");
-ensureDir(avatarsDir); ensureDir(bannersDir);
+ensureDir(avatarsDir);
+ensureDir(bannersDir);
 
 const multerOpts = { limits: { fileSize: 6 * 1024 * 1024 } };
 const avatarStorage = multer.diskStorage({
@@ -59,6 +69,8 @@ function filePathToUrl(fp) {
 }
 
 // ---------------- routes ----------------
+
+// ✅ ส่งข้อมูล user + role + isAdmin
 router.get("/me", async (req, res) => {
   try {
     const uid = getAuthedUserId(req);
@@ -66,7 +78,9 @@ router.get("/me", async (req, res) => {
 
     const u = await User.findById(uid).select(USER_SAFE_PROJECTION);
     if (!u) return res.status(404).json({ message: "user not found" });
-    return res.json(u.toJSON ? u.toJSON() : u);
+
+    // ใช้ toJSON() เพื่อให้ virtuals (เช่น isAdmin) ถูกใส่มาด้วย
+    return res.json(u.toJSON());
   } catch (e) {
     console.error("GET /users/me", e);
     return res.status(401).json({ message: "unauthenticated" });
@@ -82,21 +96,39 @@ router.put("/me", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    if (typeof username === "string" && username.trim()) u.username = username.trim();
-    if (typeof displayName === "string") u.displayName = displayName.trim();
+    if (typeof username === "string" && username.trim())
+      u.username = username.trim();
+    if (typeof displayName === "string")
+      u.displayName = displayName.trim();
     if (typeof bio === "string") u.bio = bio.trim();
 
     const links = {
-      website: req.body.website ?? req.body?.links?.website ?? u.links?.website ?? "",
-      twitter: req.body.twitter ?? req.body?.links?.twitter ?? u.links?.twitter ?? "",
-      youtube: req.body.youtube ?? req.body?.links?.youtube ?? u.links?.youtube ?? "",
-      github: req.body.github ?? req.body?.links?.github ?? u.links?.github ?? "",
+      website:
+        req.body.website ??
+        req.body?.links?.website ??
+        u.links?.website ??
+        "",
+      twitter:
+        req.body.twitter ??
+        req.body?.links?.twitter ??
+        u.links?.twitter ??
+        "",
+      youtube:
+        req.body.youtube ??
+        req.body?.links?.youtube ??
+        u.links?.youtube ??
+        "",
+      github:
+        req.body.github ??
+        req.body?.links?.github ??
+        u.links?.github ??
+        "",
     };
     u.links = links;
 
     await u.save();
     const fresh = await User.findById(uid).select(USER_SAFE_PROJECTION);
-    return res.json(fresh);
+    return res.json(fresh.toJSON());
   } catch (e) {
     if (e?.code === 11000 && e?.keyPattern?.username) {
       return res.status(409).json({ message: "username already taken" });
@@ -106,41 +138,51 @@ router.put("/me", async (req, res) => {
   }
 });
 
-router.post("/me/avatar", uploadAvatar.single("avatar"), async (req, res) => {
-  try {
-    const uid = getAuthedUserId(req);
-    if (!uid) return res.status(401).json({ message: "unauthenticated" });
-    if (!req.file) return res.status(400).json({ message: "no file" });
+router.post(
+  "/me/avatar",
+  uploadAvatar.single("avatar"),
+  async (req, res) => {
+    try {
+      const uid = getAuthedUserId(req);
+      if (!uid) return res.status(401).json({ message: "unauthenticated" });
+      if (!req.file)
+        return res.status(400).json({ message: "no file" });
 
-    const u = await User.findById(uid);
-    if (!u) return res.status(404).json({ message: "user not found" });
+      const u = await User.findById(uid);
+      if (!u) return res.status(404).json({ message: "user not found" });
 
-    u.avatarUrl = filePathToUrl(req.file.path);
-    await u.save();
-    return res.json({ avatarUrl: u.avatarUrl });
-  } catch (e) {
-    console.error("POST /users/me/avatar", e);
-    return res.status(400).json({ message: "upload failed" });
+      u.avatarUrl = filePathToUrl(req.file.path);
+      await u.save();
+      return res.json({ avatarUrl: u.avatarUrl });
+    } catch (e) {
+      console.error("POST /users/me/avatar", e);
+      return res.status(400).json({ message: "upload failed" });
+    }
   }
-});
+);
 
-router.post("/me/banner", uploadBanner.single("banner"), async (req, res) => {
-  try {
-    const uid = getAuthedUserId(req);
-    if (!uid) return res.status(401).json({ message: "unauthenticated" });
-    if (!req.file) return res.status(400).json({ message: "no file" });
+router.post(
+  "/me/banner",
+  uploadBanner.single("banner"),
+  async (req, res) => {
+    try {
+      const uid = getAuthedUserId(req);
+      if (!uid) return res.status(401).json({ message: "unauthenticated" });
+      if (!req.file)
+        return res.status(400).json({ message: "no file" });
 
-    const u = await User.findById(uid);
-    if (!u) return res.status(404).json({ message: "user not found" });
+      const u = await User.findById(uid);
+      if (!u) return res.status(404).json({ message: "user not found" });
 
-    u.bannerUrl = filePathToUrl(req.file.path);
-    await u.save();
-    return res.json({ bannerUrl: u.bannerUrl });
-  } catch (e) {
-    console.error("POST /users/me/banner", e);
-    return res.status(400).json({ message: "upload failed" });
+      u.bannerUrl = filePathToUrl(req.file.path);
+      await u.save();
+      return res.json({ bannerUrl: u.bannerUrl });
+    } catch (e) {
+      console.error("POST /users/me/banner", e);
+      return res.status(400).json({ message: "upload failed" });
+    }
   }
-});
+);
 
 /* ===== FAVORITES ===== */
 
@@ -171,7 +213,9 @@ router.post("/me/favorites/:gameId", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    const already = (u.favorites || []).some(id => String(id) === String(gameId));
+    const already = (u.favorites || []).some(
+      (id) => String(id) === String(gameId)
+    );
     if (!already) {
       u.favorites = [...(u.favorites || []), gameId];
       await u.save();
@@ -192,7 +236,9 @@ router.delete("/me/favorites/:gameId", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    u.favorites = (u.favorites || []).filter(id => String(id) !== String(gameId));
+    u.favorites = (u.favorites || []).filter(
+      (id) => String(id) !== String(gameId)
+    );
     await u.save();
     return res.json({ ok: true });
   } catch (e) {

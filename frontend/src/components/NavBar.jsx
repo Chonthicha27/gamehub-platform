@@ -2,19 +2,28 @@
 import { useNavigate } from "react-router-dom";
 import { cdn } from "../api/cdn";
 
-export default function NavBar({ currentUser, onLoginClick, onRegisterClick, onLogout }) {
+export default function NavBar({
+  currentUser,
+  onLoginClick,
+  onRegisterClick,
+  onLogout,
+}) {
   const nav = useNavigate();
 
   // ถ้ามี prop จากข้างนอก (เปิด modal) ให้ใช้; ถ้าไม่มีให้ไป route
   const goLogin = () => (onLoginClick ? onLoginClick() : nav("/login"));
-  const goRegister = () => (onRegisterClick ? onRegisterClick() : nav("/register"));
+  const goRegister = () =>
+    onRegisterClick ? onRegisterClick() : nav("/register");
 
-  const avatarSrc =
-    currentUser?.avatarUrl
-      ? cdn(currentUser.avatarUrl)
-      : `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(
-          currentUser?.username || currentUser?._id || "guest"
-        )}`;
+  // ✅ เช็กสิทธิ์แอดมินจาก user
+  const isAdmin =
+    currentUser?.isAdmin === true || currentUser?.role === "admin";
+
+  const avatarSrc = currentUser?.avatarUrl
+    ? cdn(currentUser.avatarUrl)
+    : `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(
+        currentUser?.username || currentUser?._id || "guest"
+      )}`;
 
   return (
     <header className="nav-pro">
@@ -34,10 +43,16 @@ export default function NavBar({ currentUser, onLoginClick, onRegisterClick, onL
           {!currentUser && (
             <>
               {/* เปลี่ยนมาเรียก goLogin / goRegister */}
-              <button className="nav-pro__chip nav-pro__chip--ghost" onClick={goLogin}>
+              <button
+                className="nav-pro__chip nav-pro__chip--ghost"
+                onClick={goLogin}
+              >
                 Log in
               </button>
-              <button className="nav-pro__chip nav-pro__chip--primary" onClick={goRegister}>
+              <button
+                className="nav-pro__chip nav-pro__chip--primary"
+                onClick={goRegister}
+              >
                 Sign up
               </button>
             </>
@@ -45,7 +60,20 @@ export default function NavBar({ currentUser, onLoginClick, onRegisterClick, onL
 
           {currentUser && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button className="nav-pro__chip nav-pro__chip--ghost" onClick={() => nav("/favorites")}>
+              {/* ✅ ปุ่ม Admin เฉพาะแอดมิน */}
+              {isAdmin && (
+                <button
+                  className="nav-pro__chip nav-pro__chip--ghost"
+                  onClick={() => nav("/admin")}
+                >
+                  Admin
+                </button>
+              )}
+
+              <button
+                className="nav-pro__chip nav-pro__chip--ghost"
+                onClick={() => nav("/favorites")}
+              >
                 ★ Favorites
               </button>
 
@@ -67,7 +95,12 @@ export default function NavBar({ currentUser, onLoginClick, onRegisterClick, onL
                 <span>Hi, {currentUser?.username || "User"}</span>
               </button>
 
-              <button className="nav-pro__chip nav-pro__chip--primary" onClick={onLogout}>Logout</button>
+              <button
+                className="nav-pro__chip nav-pro__chip--primary"
+                onClick={onLogout}
+              >
+                Logout
+              </button>
             </div>
           )}
         </div>

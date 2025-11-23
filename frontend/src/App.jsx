@@ -16,7 +16,7 @@ import SearchResults from "./pages/SearchResults";
 import Favorites from "./pages/Favorites";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 
-// 👇 เพิ่มสองหน้านี้
+// ลืมรหัสผ่าน
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 
@@ -70,6 +70,9 @@ export default function App() {
 
   if (!booted) return null;
 
+  // ✅ เช็กแอดมินจากข้อมูล user ที่ backend ส่งมา
+  const isAdmin = user?.isAdmin === true || user?.role === "admin";
+
   return (
     <>
       <NavBar
@@ -106,11 +109,11 @@ export default function App() {
           }
         />
 
-        {/* ===== Admin (ล็อกอินก่อน; ถ้าจะกัน role ฝั่ง client เพิ่มเงื่อนไข user?.role === 'admin') ===== */}
+        {/* ===== Admin: ต้องเป็นแอดมินเท่านั้น ===== */}
         <Route
           path="/admin"
           element={
-            <ProtectedRoute authed={!!user} booted={booted}>
+            <ProtectedRoute authed={!!user && isAdmin} booted={booted}>
               <AdminDashboard />
             </ProtectedRoute>
           }

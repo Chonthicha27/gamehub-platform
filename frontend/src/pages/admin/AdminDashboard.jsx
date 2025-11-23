@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../../api/axios";
 import "./admin.css";
 
-/* ให้มีสี chip ครบ รวมถึง blue */
+/* ---------- Small UI helpers ---------- */
+
 function Chip({ children, tone = "gray" }) {
   const map = {
     gray: "chip-gray",
@@ -16,7 +17,6 @@ function Chip({ children, tone = "gray" }) {
   return <span className={`chip ${map[tone] || map.gray}`}>{children}</span>;
 }
 
-/* อวาตาร์ตัวอักษร */
 const initials = (name = "") =>
   name
     .trim()
@@ -27,18 +27,19 @@ const initials = (name = "") =>
     .join("")
     .toUpperCase();
 
-/* Toolbar ด้านบน + tabs */
+/* ---------- Toolbar ด้านบน ---------- */
+
 function Toolbar({ tab, setTab, search, setSearch, refresh, counts }) {
   const placeholder =
     tab === "users"
-      ? "Search users…"
+      ? "Search users..."
       : tab === "games"
-      ? "Search games…"
+      ? "Search games..."
       : tab === "pending"
-      ? "Search pending games…"
+      ? "Search pending games..."
       : tab === "comments"
-      ? "Search comments…"
-      : "Search monthly votes…";
+      ? "Search comments..."
+      : "Search monthly votes...";
 
   return (
     <div className="admin-toolbar glass">
@@ -75,7 +76,7 @@ function Toolbar({ tab, setTab, search, setSearch, refresh, counts }) {
           className={`tab ${tab === "monthly" ? "active" : ""}`}
           onClick={() => setTab("monthly")}
         >
-          <span className="tab-dot" /> Monthly Vote{" "}
+          <span className="tab-dot" /> Monthly vote{" "}
           <span className="counter">{counts.monthly}</span>
         </button>
       </div>
@@ -89,7 +90,7 @@ function Toolbar({ tab, setTab, search, setSearch, refresh, counts }) {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <button className="btn primary soft" onClick={refresh}>
+        <button className="btn primary soft" onClick={refresh} type="button">
           Refresh
         </button>
       </div>
@@ -97,15 +98,16 @@ function Toolbar({ tab, setTab, search, setSearch, refresh, counts }) {
   );
 }
 
+/* ---------- Main component ---------- */
+
 export default function AdminDashboard() {
   const [tab, setTab] = useState("users");
 
   const [users, setUsers] = useState([]);
   const [games, setGames] = useState([]);
-  const [pendingGames, setPendingGames] = useState([]); // visibility = review
-  const [comments, setComments] = useState([]); // ความคิดเห็นทั้งหมด
+  const [pendingGames, setPendingGames] = useState([]);
+  const [comments, setComments] = useState([]);
 
-  // ===== Monthly vote state =====
   const [monthlyMonth, setMonthlyMonth] = useState(() => {
     const d = new Date();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -116,11 +118,15 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
+  // multiple select for users
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+
   const token = localStorage.getItem("token");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-  /** โหลด users + games + pending games + comments */
-  const refreshCore = async () => {
+  /* ---------- Load core data ---------- */
+
+  const loadCoreData = async () => {
     setLoading(true);
     try {
       const [u, g, p, c] = await Promise.all([
@@ -141,7 +147,6 @@ export default function AdminDashboard() {
     }
   };
 
-  /** โหลด leaderboard โหวตเกมประจำเดือน */
   const fetchMonthlyLeaderboard = async (overrideMonth) => {
     const month = overrideMonth || monthlyMonth;
     if (!month) return;
@@ -159,7 +164,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // month label สวย ๆ เช่น November 2025
   const monthlyLabel = useMemo(() => {
     if (!monthlyMonth) return "-";
     try {
@@ -174,13 +178,11 @@ export default function AdminDashboard() {
     }
   }, [monthlyMonth]);
 
-  // refresh หลักตอนเปิดหน้า (users/games/pending/comments)
   useEffect(() => {
-    refreshCore();
+    loadCoreData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ถ้าเปลี่ยน tab ไป monthly ครั้งแรก ให้โหลด leaderboard ด้วย
   useEffect(() => {
     if (tab === "monthly") {
       fetchMonthlyLeaderboard();
@@ -188,16 +190,16 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  /** ปุ่ม Refresh ด้านบน — ถ้าอยู่ tab monthly ให้ refresh leaderboard แทน */
   const handleRefresh = () => {
     if (tab === "monthly") {
       fetchMonthlyLeaderboard();
     } else {
-      refreshCore();
+      loadCoreData();
     }
   };
 
-  /* ====== Actions: Users ====== */
+  /* ---------- User actions ---------- */
+
   const setRole = async (id, role) => {
     const r = await api.patch(
       `/admin/users/${id}`,
@@ -236,12 +238,32 @@ export default function AdminDashboard() {
       headers,
     });
     setUsers((xs) => xs.filter((u) => u._id !== id));
-    refreshCore();
+    setSelectedUserIds((ids) => ids.filter((x) => x !== id));
+    loadCoreData();
   };
 
-  /* ====== Actions: Games ====== */
+  /* multiple select helpers (Users only) */
+  const toggleUserSelection = (id) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
-  /** ลบ / Reject เกม (ใช้ได้ทั้ง tab games และ tab pending) */
+  const allUsersInViewSelected =
+    users.length > 0 &&
+    users.every((u) => selectedUserIds.includes(u._id)) &&
+    selectedUserIds.length > 0;
+
+  const toggleSelectAllUsers = () => {
+    if (allUsersInViewSelected) {
+      setSelectedUserIds([]);
+    } else {
+      setSelectedUserIds(users.map((u) => u._id));
+    }
+  };
+
+  /* ---------- Game actions ---------- */
+
   const delGame = async (game) => {
     const isPending = game.visibility === "review";
 
@@ -286,7 +308,6 @@ export default function AdminDashboard() {
     }
   };
 
-  /** ระงับเกม */
   const suspendGame = async (game) => {
     const reason = prompt(
       "ระบุเหตุผลที่ต้องระงับเกมนี้ (จะแนบในอีเมลถึงผู้พัฒนาเกม)",
@@ -311,7 +332,6 @@ export default function AdminDashboard() {
     }
   };
 
-  /** ปลดระงับเกม */
   const unsuspendGame = async (game) => {
     if (!confirm("ปลดระงับเกมนี้และทำให้กลับมาออนไลน์อีกครั้งหรือไม่?"))
       return;
@@ -331,7 +351,6 @@ export default function AdminDashboard() {
     }
   };
 
-  /** อนุมัติเกม (เปลี่ยน review -> public) */
   const approveGame = async (id) => {
     if (!confirm("อนุมัติเกมนี้เพื่อเผยแพร่สู่สาธารณะ?")) return;
     try {
@@ -358,7 +377,7 @@ export default function AdminDashboard() {
     }
   };
 
-  /* ====== Actions: Comments ====== */
+  /* ---------- Comment actions ---------- */
 
   const hideComment = async (comment) => {
     const reason = prompt(
@@ -418,7 +437,8 @@ export default function AdminDashboard() {
     }
   };
 
-  /* ====== Filters ====== */
+  /* ---------- Filters ---------- */
+
   const fUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return users;
@@ -467,13 +487,17 @@ export default function AdminDashboard() {
     });
   }, [search, comments]);
 
-  // ✅ ดันคอมเมนต์ที่โดน report เยอะขึ้นมาก่อน
+  // แสดงเฉพาะคอมเมนต์ที่ถูก report จริง ๆ
   const sortedComments = useMemo(() => {
-    return [...fComments].sort((a, b) => {
-      const ar = a.reportsCount || 0;
-      const br = b.reportsCount || 0;
-      if (br !== ar) return br - ar; // รายงานเยอะมาก่อน
-      return new Date(b.createdAt) - new Date(a.createdAt); // ใหม่ก่อน
+    const reportedOnly = fComments.filter((c) => {
+      const count = c.reportsCount ?? (Array.isArray(c.reports) ? c.reports.length : 0);
+      return (count || 0) > 0;
+    });
+    return reportedOnly.sort((a, b) => {
+      const ar = a.reportsCount || (Array.isArray(a.reports) ? a.reports.length : 0) || 0;
+      const br = b.reportsCount || (Array.isArray(b.reports) ? b.reports.length : 0) || 0;
+      if (br !== ar) return br - ar;
+      return new Date(b.createdAt) - new Date(a.createdAt);
     });
   }, [fComments]);
 
@@ -481,7 +505,7 @@ export default function AdminDashboard() {
     users: users.length,
     games: games.length,
     pending: pendingGames.length,
-    comments: comments.length,
+    comments: sortedComments.length,
     monthly: monthlyLeaderboard.length,
   };
 
@@ -490,6 +514,8 @@ export default function AdminDashboard() {
       {role === "admin" ? "admin" : "user"}
     </Chip>
   );
+
+  /* ---------- Render ---------- */
 
   return (
     <div className="admin-wrap">
@@ -504,15 +530,29 @@ export default function AdminDashboard() {
         counts={counts}
       />
 
-      {loading && <div className="loading">Loading…</div>}
+      {loading && <div className="loading">Loading...</div>}
 
-      {/* ===== TAB: USERS ===== */}
+      {/* ===== USERS TAB ===== */}
       {tab === "users" && (
         <div className="card glass">
+          {selectedUserIds.length > 0 && (
+            <div className="bulk-indicator">
+              Selected {selectedUserIds.length} user
+              {selectedUserIds.length > 1 ? "s" : ""}
+            </div>
+          )}
           <div className="table-wrap">
             <table className="table table-fixed pretty">
               <thead>
                 <tr>
+                  <th className="col-select">
+                    <input
+                      type="checkbox"
+                      className="row-checkbox"
+                      checked={allUsersInViewSelected}
+                      onChange={toggleSelectAllUsers}
+                    />
+                  </th>
                   <th className="col-user">Username</th>
                   <th className="col-email">Email</th>
                   <th className="col-role">Role</th>
@@ -521,78 +561,92 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {fUsers.map((u) => (
-                  <tr key={u._id}>
-                    <td>
-                      <div className="cell-main">
-                        <div className="avatar-circle">
-                          {initials(u.username || "U")}
-                        </div>
-                        <div className="cell-texts">
-                          <div className="strong">{u.username}</div>
-                          <div className="muted tiny">
-                            {new Date(u.createdAt).toLocaleDateString()}
+                {fUsers.map((u) => {
+                  const checked = selectedUserIds.includes(u._id);
+                  return (
+                    <tr
+                      key={u._id}
+                      className={checked ? "row-selected" : undefined}
+                    >
+                      <td className="cell-center">
+                        <input
+                          type="checkbox"
+                          className="row-checkbox"
+                          checked={checked}
+                          onChange={() => toggleUserSelection(u._id)}
+                        />
+                      </td>
+                      <td>
+                        <div className="cell-main">
+                          <div className="avatar-circle">
+                            {initials(u.username || "U")}
+                          </div>
+                          <div className="cell-texts">
+                            <div className="strong">{u.username}</div>
+                            <div className="muted tiny">
+                              {new Date(u.createdAt).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="ellipsis">{u.email || "-"}</span>
-                    </td>
-                    <td>
-                      <RoleChip role={u.role} />
-                    </td>
-                    <td>
-                      {u.status === "active" ? (
-                        <Chip tone="green">active</Chip>
-                      ) : (
-                        <Chip tone="red">suspended</Chip>
-                      )}
-                    </td>
-                    <td className="right">
-                      <div className="actions">
-                        <div className="btn-group compact">
+                      </td>
+                      <td>
+                        <span className="ellipsis">{u.email || "-"}</span>
+                      </td>
+                      <td>
+                        <RoleChip role={u.role} />
+                      </td>
+                      <td>
+                        {u.status === "active" ? (
+                          <Chip tone="green">active</Chip>
+                        ) : (
+                          <Chip tone="red">suspended</Chip>
+                        )}
+                      </td>
+                      <td className="right">
+                        <div className="actions">
+                          <div className="btn-group compact">
+                            <button
+                              className="btn ghost"
+                              onClick={() => setRole(u._id, "user")}
+                            >
+                              User
+                            </button>
+                            <button
+                              className="btn ghost"
+                              onClick={() => setRole(u._id, "admin")}
+                            >
+                              Admin
+                            </button>
+                          </div>
+                          {u.status !== "suspended" ? (
+                            <button
+                              className="btn warn soft"
+                              onClick={() => suspend(u._id)}
+                            >
+                              Suspend
+                            </button>
+                          ) : (
+                            <button
+                              className="btn ok soft"
+                              onClick={() => activate(u._id)}
+                            >
+                              Activate
+                            </button>
+                          )}
                           <button
-                            className="btn ghost"
-                            onClick={() => setRole(u._id, "user")}
+                            className="btn danger soft"
+                            onClick={() => delUser(u._id)}
                           >
-                            User
-                          </button>
-                          <button
-                            className="btn ghost"
-                            onClick={() => setRole(u._id, "admin")}
-                          >
-                            Admin
+                            Delete
                           </button>
                         </div>
-                        {u.status !== "suspended" ? (
-                          <button
-                            className="btn warn soft"
-                            onClick={() => suspend(u._id)}
-                          >
-                            Suspend
-                          </button>
-                        ) : (
-                          <button
-                            className="btn ok soft"
-                            onClick={() => activate(u._id)}
-                          >
-                            Activate
-                          </button>
-                        )}
-                        <button
-                          className="btn danger soft"
-                          onClick={() => delUser(u._id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {fUsers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="empty">
+                    <td colSpan={6} className="empty">
                       No users found
                     </td>
                   </tr>
@@ -603,7 +657,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===== TAB: GAMES (ทั้งหมด) ===== */}
+      {/* ===== GAMES TAB ===== */}
       {tab === "games" && (
         <div className="card glass">
           <div className="table-wrap">
@@ -622,19 +676,10 @@ export default function AdminDashboard() {
                 {fGames.map((g) => (
                   <tr key={g._id}>
                     <td>
-                      <div className="cell-main">
-                        <div
-                          className="cover-sm gradient"
-                          style={{
-                            backgroundImage: g.coverUrl
-                              ? `url(${g.coverUrl})`
-                              : "none",
-                          }}
-                        />
-                        <div className="cell-texts">
-                          <div className="strong">{g.title}</div>
-                          <div className="muted tiny ellipsis">{g.slug}</div>
-                        </div>
+                      {/* เอากล่อง cover เปล่า ๆ ออก เหลือแค่ชื่อ + slug */}
+                      <div className="cell-texts">
+                        <div className="strong">{g.title}</div>
+                        <div className="muted tiny ellipsis">{g.slug}</div>
                       </div>
                     </td>
                     <td>{g.uploader?.username || "-"}</td>
@@ -707,7 +752,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===== TAB: PENDING GAMES (รออนุมัติ) ===== */}
+      {/* ===== PENDING GAMES TAB ===== */}
       {tab === "pending" && (
         <div className="card glass">
           <div className="table-wrap">
@@ -786,7 +831,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===== TAB: COMMENTS ===== */}
+      {/* ===== COMMENTS TAB ===== */}
       {tab === "comments" && (
         <div className="card glass">
           <div className="table-wrap">
@@ -797,8 +842,8 @@ export default function AdminDashboard() {
                   <th style={{ width: "18%" }}>Author</th>
                   <th style={{ width: "34%" }}>Comment</th>
                   <th style={{ width: "10%" }}>Status</th>
-                  <th style={{ width: "20%" }}>Reports</th>
-                  <th style={{ width: "20%" }} className="right">
+                  <th style={{ width: "14%" }}>Reports</th>
+                  <th style={{ width: "16%" }} className="right">
                     Actions
                   </th>
                 </tr>
@@ -851,8 +896,14 @@ export default function AdminDashboard() {
                     </td>
                     <td>
                       <Chip tone={c.reportsCount ? "amber" : "gray"}>
-                        {c.reportsCount || 0} report
-                        {c.reportsCount === 1 ? "" : "s"}
+                        {c.reportsCount ||
+                          (Array.isArray(c.reports) ? c.reports.length : 0)}{" "}
+                        report
+                        {(c.reportsCount ||
+                          (Array.isArray(c.reports) ? c.reports.length : 0)) ===
+                        1
+                          ? ""
+                          : "s"}
                       </Chip>
                     </td>
                     <td className="right">
@@ -899,7 +950,7 @@ export default function AdminDashboard() {
                 {sortedComments.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
-                      No comments found
+                      No reported comments 🎉
                     </td>
                   </tr>
                 )}
@@ -909,19 +960,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ===== TAB: MONTHLY VOTE (LEADERBOARD) ===== */}
+      {/* ===== MONTHLY VOTE TAB ===== */}
       {tab === "monthly" && (
         <div className="card glass">
-          <div
-            className="monthly-header"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              gap: "16px",
-              marginBottom: "8px",
-            }}
-          >
+          <div className="monthly-header">
             <div>
               <div className="muted tiny">Monthly vote leaderboard</div>
               <div className="strong">Showing {monthlyLabel}</div>
@@ -930,13 +972,13 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div
-              className="monthly-controls"
-              style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}
-            >
+            <div className="monthly-controls">
               <div>
-                <label className="muted tiny block">Month</label>
+                <label className="muted tiny block" htmlFor="monthInput">
+                  Month
+                </label>
                 <input
+                  id="monthInput"
                   type="month"
                   value={monthlyMonth}
                   onChange={(e) => setMonthlyMonth(e.target.value)}
@@ -969,7 +1011,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {monthlyLeaderboard.map((row, idx) => {
-                  const game = row._id || row.game; // เผื่อรูปแบบต่างกัน
+                  const game = row._id || row.game;
                   if (!game) return null;
                   const uploaderName =
                     game.uploader?.username || game.uploaderName || "-";

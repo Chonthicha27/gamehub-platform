@@ -28,32 +28,38 @@ router.get("/logout", (req, res) => {
   });
 });
 
-// ----- helper: ส่งอีเมลยืนยัน -----
+// ----- helper: ส่งอีเมลยืนยัน (ไม่ทำให้ระบบพัง ถ้าส่งไม่สำเร็จ) -----
 async function sendVerifyEmail(user) {
-  const token = crypto.randomBytes(32).toString("hex");
-  user.emailVerifyToken = token;
-  user.emailVerifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 ชม.
-  await user.save();
+  try {
+    const token = crypto.randomBytes(32).toString("hex");
+    user.emailVerifyToken = token;
+    user.emailVerifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 ชม.
+    await user.save();
 
-  const link = `${SERVER_URL}/api/auth/verify-email?uid=${user._id}&token=${token}`;
-  const html = `
-    <div style="font-family:system-ui,Segoe UI,Roboto,Arial">
-      <h2>ยืนยันอีเมลสำหรับ GPX</h2>
-      <p>สวัสดี ${user.username}, กรุณาคลิกปุ่มด้านล่างเพื่อยืนยันอีเมลของคุณ</p>
-      <p><a href="${link}" style="background:#111;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">ยืนยันอีเมล</a></p>
-      <p>หรือเปิดลิงก์นี้: <a href="${link}">${link}</a></p>
-      <p style="color:#666">ลิงก์จะหมดอายุใน 24 ชั่วโมง</p>
-    </div>
-  `;
-  await sendMail({
-    to: user.email,
-    subject: "GPX - ยืนยันอีเมลของคุณ",
-    html,
-    text: `Verify: ${link}`,
-  });
+    const link = `${SERVER_URL}/api/auth/verify-email?uid=${user._id}&token=${token}`;
+    const html = `
+      <div style="font-family:system-ui,Segoe UI,Roboto,Arial">
+        <h2>ยืนยันอีเมลสำหรับ GPX</h2>
+        <p>สวัสดี ${user.username}, กรุณาคลิกปุ่มด้านล่างเพื่อยืนยันอีเมลของคุณ</p>
+        <p><a href="${link}" style="background:#111;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">ยืนยันอีเมล</a></p>
+        <p>หรือเปิดลิงก์นี้: <a href="${link}">${link}</a></p>
+        <p style="color:#666">ลิงก์จะหมดอายุใน 24 ชั่วโมง</p>
+      </div>
+    `;
+
+    await sendMail({
+      to: user.email,
+      subject: "GPX - ยืนยันอีเมลของคุณ",
+      html,
+      text: `Verify: ${link}`,
+    });
+  } catch (err) {
+    console.error("[AUTH] sendVerifyEmail failed:", err.message || err);
+    // ไม่ throw ต่อ — แค่ log ไว้พอ
+  }
 }
 
-// ----- สมัครสมาชิก (ส่งลิงก์ยืนยัน) -----
+// ----- สมัครสมาชิก (เวอร์ชันส่งอีเมลยืนยันจริง) -----
 router.post("/register", async (req, res, next) => {
   try {
     const { username, email, password } = req.body || {};
@@ -68,6 +74,8 @@ router.post("/register", async (req, res, next) => {
       return res.status(409).json({ message: "อีเมลถูกใช้แล้ว" });
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    // ✅ สมัครแล้วยังไม่ยืนยันอีเมล
     const user = await User.create({
       username,
       email,
@@ -75,18 +83,19 @@ router.post("/register", async (req, res, next) => {
       emailVerified: false,
     });
 
-    await sendVerifyEmail(user); // ส่งลิงก์ยืนยัน
+    // พยายามส่งเมลยืนยัน (ถ้าส่งไม่ได้ ระบบไม่พัง แค่ log)
+    await sendVerifyEmail(user);
+
     res.json({
       ok: true,
-      message:
-        "ส่งลิงก์ยืนยันอีเมลแล้ว โปรดตรวจสอบกล่องจดหมายของคุณ",
+      message: "สมัครสมาชิกสำเร็จ! กรุณาเช็คอีเมลเพื่อยืนยันบัญชีของคุณ",
     });
   } catch (e) {
     next(e);
   }
 });
 
-// ----- Verify email จากลิงก์ -----
+// ----- Verify email จากลิงก์ (ยังคงไว้ เผื่อ future ใช้จริง) -----
 router.get("/verify-email", async (req, res) => {
   const { uid, token } = req.query || {};
   const user = await User.findById(uid);
@@ -122,7 +131,6 @@ router.post("/resend-verify", async (req, res) => {
 });
 
 // ----- ลืมรหัสผ่าน: ขอส่งลิงก์ reset -----
-// POST /api/auth/forgot-password  { email }
 router.post("/forgot-password", async (req, res, next) => {
   try {
     const { email } = req.body || {};
@@ -156,6 +164,7 @@ router.post("/forgot-password", async (req, res, next) => {
       </div>
     `;
 
+    // พยายามส่งเมล แต่ไม่ให้ระบบพังถ้าส่งไม่ได้
     await sendMail({
       to: user.email,
       subject: "GPX - รีเซ็ตรหัสผ่านของคุณ",
@@ -174,7 +183,6 @@ router.post("/forgot-password", async (req, res, next) => {
 });
 
 // ----- ตั้งรหัสผ่านใหม่จาก token -----
-// POST /api/auth/reset-password  { token, password }
 router.post("/reset-password", async (req, res, next) => {
   try {
     const { token, password } = req.body || {};
@@ -209,7 +217,7 @@ router.post("/reset-password", async (req, res, next) => {
   }
 });
 
-// ----- ล็อกอิน (บล็อกถ้ายังไม่ยืนยัน สำหรับ local account) -----
+// ----- ล็อกอิน (โหมด dev: ยังไม่บังคับ emailVerified) -----
 router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
@@ -224,11 +232,12 @@ router.post("/login", async (req, res) => {
         "บัญชีนี้สร้างด้วย OAuth โปรดล็อกอินด้วยปุ่ม Google/GitHub",
     });
 
-  if (!user.emailVerified)
-    return res.status(403).json({
-      message:
-        "ยังไม่ได้ยืนยันอีเมล โปรดตรวจสอบอีเมลหรือกดส่งลิงก์อีกครั้ง",
-    });
+  // ถ้าอนาคตอยากบังคับให้ยืนยันอีเมลก่อนใช้ ให้ uncomment ตรงนี้
+  // if (!user.emailVerified)
+  //   return res.status(403).json({
+  //     message:
+  //       "ยังไม่ได้ยืนยันอีเมล โปรดตรวจสอบอีเมลหรือกดส่งลิงก์อีกครั้ง",
+  //   });
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok)
