@@ -1,8 +1,9 @@
-// AuthModal.jsx
+// frontend/src/components/AuthModal.jsx
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { API_ORIGIN } from "../api/cdn"; // ✅ ใช้ base เดียวกับฝั่ง CDN/API
 
 export default function AuthModal({ open, defaultTab = "login", onClose, onAuthed }) {
   const [tab, setTab] = useState(defaultTab);
@@ -67,16 +68,15 @@ export default function AuthModal({ open, defaultTab = "login", onClose, onAuthe
     }
   };
 
-  const base = (import.meta.env.VITE_API_URL || "http://localhost:4000/api").replace(/\/$/, "");
-  const oauthGoogle = () => (window.location.href = `${base}/auth/google`);
-  const oauthGithub = () => (window.location.href = `${base}/auth/github`);
+  // ✅ ใช้ API_ORIGIN จาก cdn.js แล้วต่อ /api แทน localhost
+  const OAUTH_BASE = `${API_ORIGIN.replace(/\/$/, "")}/api`;
+  const oauthGoogle = () => (window.location.href = `${OAUTH_BASE}/auth/google`);
+  const oauthGithub = () => (window.location.href = `${OAUTH_BASE}/auth/github`);
 
   const BG_URL = "/img/auth-left.png";
 
   const handleForgotPassword = () => {
-    // ปิด modal ก่อน
     onClose?.();
-    // ไปหน้า /forgot-password
     navigate("/forgot-password");
   };
 
