@@ -95,7 +95,7 @@ router.post("/register", async (req, res, next) => {
   }
 });
 
-// ----- Verify email จากลิงก์ (ยังคงไว้ เผื่อ future ใช้จริง) -----
+// ----- Verify email จากลิงก์ -----
 router.get("/verify-email", async (req, res) => {
   const { uid, token } = req.query || {};
   const user = await User.findById(uid);
@@ -113,7 +113,8 @@ router.get("/verify-email", async (req, res) => {
   user.emailVerifyExpires = undefined;
   await user.save();
 
-  return res.redirect(`${CLIENT_URL}?verified=1`);
+  // ✅ ยืนยันเสร็จแล้ว เด้งกลับหน้า Home ตรง ๆ
+  return res.redirect(CLIENT_URL);
 });
 
 // ----- Resend verify -----
