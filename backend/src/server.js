@@ -1,6 +1,7 @@
 ﻿// backend/src/server.js
 require("dotenv").config();
 const path = require("path");
+const fs = require("fs"); // ✅ เพิ่มอันนี้
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -21,6 +22,9 @@ connectDB();
 const ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
 const PORT = process.env.PORT || 4000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
+
+// ✅ สร้างโฟลเดอร์ uploads ถ้ายังไม่มี (ทั้ง local และบน Render)
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.set("trust proxy", 1); // ถ้า reverse proxy ในอนาคต
 
