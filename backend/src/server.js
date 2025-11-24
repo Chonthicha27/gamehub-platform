@@ -1,7 +1,7 @@
 ﻿// backend/src/server.js
 require("dotenv").config();
 const path = require("path");
-const fs = require("fs"); // ✅ เพิ่มอันนี้
+const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -46,8 +46,9 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // ===== Session + Passport =====
-const cookieSecure =
-  String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
+// dev (localhost) → http  → sameSite:"lax", secure:false
+// prod (Firebase + Render คนละโดเมน, https) → sameSite:"none", secure:true
+const isProd = ORIGIN.startsWith("https://");
 
 app.use(
   session({
@@ -55,11 +56,12 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      sameSite: "lax",
-      secure: cookieSecure,
+      sameSite: isProd ? "none" : "lax",
+      secure: isProd,
     },
   })
 );
+
 app.use(passport.initialize());
 app.use(passport.session());
 require("./config/passport");
@@ -105,7 +107,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/games", gamesRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api", commentsRoutes);       // comments
-app.use("/api", monthlyVoteRoutes);    // ✅ monthly vote (รวม /games/:id/monthly-vote และ /monthly-vote/leaderboard)
+app.use("/api", monthlyVoteRoutes);    // monthly vote
 
 // Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
