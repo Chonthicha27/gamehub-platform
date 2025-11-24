@@ -4,6 +4,7 @@ const GitHubStrategy = require("passport-github2").Strategy;
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
 
+// ดึงค่า env ที่จำเป็น
 const {
   GITHUB_CLIENT_ID,
   GITHUB_CLIENT_SECRET,
@@ -14,7 +15,9 @@ const {
   GOOGLE_CALLBACK_URL,
 } = process.env;
 
+// ---------- Session serialize/deserialize ----------
 passport.serializeUser((user, done) => done(null, user.id));
+
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id).lean();
@@ -24,6 +27,7 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+// ---------- helper: สร้าง username ไม่ซ้ำ ----------
 async function uniqueUsername(base) {
   const usernameBase = (base || "player").toLowerCase().replace(/\s+/g, "");
   let finalName = usernameBase || "player";
@@ -35,7 +39,7 @@ async function uniqueUsername(base) {
   return finalName;
 }
 
-/* ---------- GitHub ---------- */
+/* ---------- GitHub OAuth ---------- */
 if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
   passport.use(
     new GitHubStrategy(
@@ -50,7 +54,9 @@ if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
         try {
           const githubId = String(profile.id);
           const email =
-            (profile.emails && profile.emails[0] && profile.emails[0].value) ||
+            (profile.emails &&
+              profile.emails[0] &&
+              profile.emails[0].value) ||
             `${githubId}@users.noreply.github.com`;
 
           let user =
@@ -59,18 +65,25 @@ if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
 
           if (!user) {
             const uname = await uniqueUsername(
-              profile.username || profile.displayName || email?.split("@")[0]
+              profile.username ||
+                profile.displayName ||
+                (email && email.split("@")[0])
             );
+
             user = await User.create({
               username: uname,
               email,
               githubId,
               avatar:
-                (profile.photos && profile.photos[0] && profile.photos[0].value) ||
+                (profile.photos &&
+                  profile.photos[0] &&
+                  profile.photos[0].value) ||
                 "",
-              emailVerified: !!email && !email.endsWith("users.noreply.github.com"),
+              emailVerified:
+                !!email && !email.endsWith("users.noreply.github.com"),
             });
           } else {
+            // ผูก githubId กับ user เดิม และเติม avatar ถ้ายังไม่มี
             if (!user.githubId) user.githubId = githubId;
             if (!user.avatar && profile.photos && profile.photos[0]) {
               user.avatar = profile.photos[0].value;
@@ -87,7 +100,7 @@ if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
   );
 }
 
-/* ---------- Google ---------- */
+/* ---------- Google OAuth ---------- */
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
   passport.use(
     new GoogleStrategy(
@@ -100,11 +113,15 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
       async (_accessToken, _refreshToken, profile, done) => {
         try {
           const email =
-            (profile.emails && profile.emails[0] && profile.emails[0].value) ||
+            (profile.emails &&
+              profile.emails[0] &&
+              profile.emails[0].value) ||
             null;
           const googleId = String(profile.id);
           const avatar =
-            (profile.photos && profile.photos[0] && profile.photos[0].value) ||
+            (profile.photos &&
+              profile.photos[0] &&
+              profile.photos[0].value) ||
             "";
 
           let user =
@@ -113,14 +130,18 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 
           if (!user) {
             const uname = await uniqueUsername(
-              profile.displayName || email?.split("@")[0] || `g_${googleId}`
+              profile.displayName ||
+                (email && email.split("@")[0]) ||
+                `g_${googleId}`
             );
+
             user = await User.create({
               username: uname,
               email,
               googleId,
               avatar,
-              emailVerified: !!email, // Google ให้ verified email อยู่แล้ว
+              // Google ส่วนใหญ่จะส่งอีเมลที่ verify แล้วมา
+              emailVerified: !!email,
             });
           } else {
             if (!user.googleId) user.googleId = googleId;
