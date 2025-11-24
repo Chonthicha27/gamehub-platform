@@ -1,6 +1,7 @@
 # root
 node_modules/
 .env
+.env.*   # << เพิ่มอันนี้
 
 # backend
 /backend/.env
