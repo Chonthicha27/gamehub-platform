@@ -8,6 +8,7 @@ const AdmZip = require("adm-zip");
 const { v4: uuid } = require("uuid");
 const jwt = require("jsonwebtoken");
 const admin = require("firebase-admin");
+const { getStorage } = require("firebase-admin/storage");
 
 let Game;
 let Review;
@@ -69,7 +70,8 @@ function initFirebaseBucket() {
         storageBucket: FIREBASE_STORAGE_BUCKET,
       });
     }
-    firebaseBucket = admin.storage().bucket(FIREBASE_STORAGE_BUCKET);
+    const storage = getStorage();
+    firebaseBucket = storage.bucket(FIREBASE_STORAGE_BUCKET);
     useFirebase = true;
     console.log("[games] Firebase Storage enabled:", FIREBASE_STORAGE_BUCKET);
   } catch (err) {
