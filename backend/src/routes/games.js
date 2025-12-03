@@ -7,6 +7,7 @@ const multer = require("multer");
 const AdmZip = require("adm-zip");
 const { v4: uuid } = require("uuid");
 const jwt = require("jsonwebtoken");
+const admin = require("firebase-admin");
 
 let Game;
 let Review;
@@ -32,34 +33,55 @@ try {
 
 const router = express.Router();
 
-/* ===== Supabase Storage config (optional) ===== */
-let useSupabase = false;
-let supabase = null;
+/* ===== Firebase Storage config (optional) ===== */
+let useFirebase = false;
+let firebaseBucket = null;
 
-const { createClient } = require("@supabase/supabase-js");
+const FIREBASE_SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT || "";
+const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || "";
+const FIREBASE_KEY_PREFIX = process.env.FIREBASE_KEY_PREFIX || "games"; // prefix เช่น "games"
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || ""; // ตั้งชื่อ bucket ใน Supabase
-const SUPABASE_KEY_PREFIX = process.env.SUPABASE_KEY_PREFIX || "games"; // prefix เช่น "games"
+function initFirebaseBucket() {
+  if (firebaseBucket) return firebaseBucket;
 
-if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && SUPABASE_BUCKET) {
-  try {
-    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false },
-    });
-    useSupabase = true;
-    console.log("[games] Supabase storage enabled:", SUPABASE_BUCKET);
-  } catch (err) {
+  if (!FIREBASE_SERVICE_ACCOUNT || !FIREBASE_STORAGE_BUCKET) {
     console.warn(
-      "[games] Supabase createClient failed, fallback to local uploads:",
+      "[games] Firebase not fully configured (FIREBASE_SERVICE_ACCOUNT / FIREBASE_STORAGE_BUCKET) – fallback to local uploads"
+    );
+    return null;
+  }
+
+  let serviceAccountObj;
+  try {
+    serviceAccountObj = JSON.parse(FIREBASE_SERVICE_ACCOUNT);
+  } catch (err) {
+    console.error(
+      "[games] parse FIREBASE_SERVICE_ACCOUNT failed:",
       err.message || err
     );
+    return null;
   }
-} else {
-  console.warn(
-    "[games] Supabase not fully configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_BUCKET) – fallback to local uploads"
-  );
+
+  try {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccountObj),
+        storageBucket: FIREBASE_STORAGE_BUCKET,
+      });
+    }
+    firebaseBucket = admin.storage().bucket(FIREBASE_STORAGE_BUCKET);
+    useFirebase = true;
+    console.log("[games] Firebase Storage enabled:", FIREBASE_STORAGE_BUCKET);
+  } catch (err) {
+    console.error(
+      "[games] Firebase admin init failed, fallback to local uploads:",
+      err.message || err
+    );
+    firebaseBucket = null;
+    useFirebase = false;
+  }
+
+  return firebaseBucket;
 }
 
 /* ===== auth ===== */
@@ -184,7 +206,7 @@ async function rmrf(dir) {
   } catch {}
 }
 
-/* ===== Supabase helpers ===== */
+/* ===== Firebase helpers ===== */
 
 function guessContentType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -195,46 +217,48 @@ function guessContentType(filePath) {
   if (ext === ".png") return "image/png";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
+  if (ext === ".rar") return "application/x-rar-compressed";
   return "application/octet-stream";
 }
 
-/** upload local file ขึ้น Supabase แล้วคืน public URL */
-async function uploadToSupabase(localPath, key) {
-  if (!useSupabase || !supabase) throw new Error("Supabase not enabled");
+function getFirebasePublicUrl(key) {
   const cleanKey = key.replace(/^\/+/, "");
+  if (!FIREBASE_STORAGE_BUCKET) return null;
+  return `https://storage.googleapis.com/${FIREBASE_STORAGE_BUCKET}/${encodeURI(
+    cleanKey
+  )}`;
+}
 
-  const fileBuffer = await fsp.readFile(localPath);
-  const contentType = guessContentType(localPath);
+/** upload local file ขึ้น Firebase แล้วคืน public URL */
+async function uploadToFirebase(localPath, key, explicitContentType) {
+  const bucket = initFirebaseBucket();
+  if (!bucket || !useFirebase) throw new Error("Firebase not enabled");
 
-  const { error } = await supabase.storage
-    .from(SUPABASE_BUCKET)
-    .upload(cleanKey, fileBuffer, {
-      contentType,
-      upsert: true, // ถ้าอัปโหลดทับไฟล์เดิม ให้เขียนทับ
-    });
+  const cleanKey = key.replace(/^\/+/, "");
+  const contentType = explicitContentType || guessContentType(localPath);
 
-  if (error) {
-    console.error("[Supabase upload] error:", error);
-    throw new Error(error.message || "Supabase upload failed");
+  const options = {
+    destination: cleanKey,
+    metadata: {},
+  };
+  if (contentType) {
+    options.metadata.contentType = contentType;
   }
 
-  // เอา public URL
-  const { data } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(cleanKey);
-  const publicUrl = data && data.publicUrl ? data.publicUrl : null;
+  await bucket.upload(localPath, options);
+  await bucket.file(cleanKey).makePublic();
 
-  // ลบไฟล์ temp local ทิ้ง
   await safeUnlink(localPath);
 
-  if (!publicUrl) {
-    throw new Error("Supabase public URL not available");
-  }
-
-  return publicUrl;
+  const url = getFirebasePublicUrl(cleanKey);
+  if (!url) throw new Error("Firebase public URL not available");
+  return url;
 }
 
 /** upload ทั้งโฟลเดอร์ (ใช้ตอนแตก zip เว็บเกม) */
-async function uploadDirToSupabase(rootDir, keyPrefix) {
-  if (!useSupabase || !supabase) throw new Error("Supabase not enabled");
+async function uploadDirToFirebase(rootDir, keyPrefix) {
+  const bucket = initFirebaseBucket();
+  if (!bucket || !useFirebase) throw new Error("Firebase not enabled");
 
   const stack = [""];
   while (stack.length) {
@@ -248,10 +272,18 @@ async function uploadDirToSupabase(rootDir, keyPrefix) {
         stack.push(relPath);
       } else if (e.isFile()) {
         const key = `${keyPrefix}/${relPath.replace(/\\/g, "/")}`;
-        await uploadToSupabase(fullPath, key);
+        const contentType = guessContentType(fullPath);
+        await uploadToFirebase(fullPath, key, contentType);
       }
     }
   }
+}
+
+async function deletePrefixFromFirebase(prefix) {
+  const bucket = initFirebaseBucket();
+  if (!bucket || !useFirebase) return;
+  const cleanPrefix = prefix.replace(/^\/+/, "");
+  await bucket.deleteFiles({ prefix: cleanPrefix });
 }
 
 /** ดึง gameId จาก URL ไม่ว่าจะเป็น /uploads/games/... หรือ https://.../games/... */
@@ -339,9 +371,9 @@ router.post(
 
       const gameId = `${slug}-${uuid().slice(0, 8)}`;
       const gameDir = path.join(uploadsRoot, "games", gameId); // ใช้กรณี local
-      const keyPrefix = `${SUPABASE_KEY_PREFIX}/${gameId}`;
+      const keyPrefix = `${FIREBASE_KEY_PREFIX}/${gameId}`;
 
-      if (!useSupabase) {
+      if (!useFirebase) {
         await fsp.mkdir(gameDir, { recursive: true });
       }
 
@@ -349,16 +381,16 @@ router.post(
 
       if (kind === "html") {
         if (/\.html?$/i.test(file.originalname)) {
-          if (useSupabase) {
+          if (useFirebase) {
             const key = `${keyPrefix}/index.html`;
-            fileUrl = await uploadToSupabase(file.path, key);
+            fileUrl = await uploadToFirebase(file.path, key, "text/html");
           } else {
             const dest = path.join(gameDir, "index.html");
             await moveFile(file.path, dest);
             fileUrl = `/uploads/games/${gameId}/index.html`;
           }
         } else if (/\.zip$/i.test(file.originalname)) {
-          if (useSupabase) {
+          if (useFirebase) {
             const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
             await fsp.mkdir(unzipDir, { recursive: true });
 
@@ -373,11 +405,10 @@ router.post(
             if (!idx)
               return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
 
-            await uploadDirToSupabase(unzipDir, keyPrefix);
-            fileUrl = supabase.storage
-              .from(SUPABASE_BUCKET)
-              .getPublicUrl(`${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`).data
-              .publicUrl;
+            await uploadDirToFirebase(unzipDir, keyPrefix);
+
+            const indexKey = `${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`;
+            fileUrl = getFirebasePublicUrl(indexKey);
 
             await rmrf(unzipDir);
           } else {
@@ -407,10 +438,14 @@ router.post(
             .json({ message: "โหมด Downloadable รองรับเฉพาะไฟล์ .rar" });
         }
 
-        if (useSupabase) {
+        if (useFirebase) {
           const fname = path.basename(file.originalname);
           const key = `${keyPrefix}/${fname}`;
-          fileUrl = await uploadToSupabase(file.path, key);
+          fileUrl = await uploadToFirebase(
+            file.path,
+            key,
+            "application/x-rar-compressed"
+          );
         } else {
           const dest = path.join(gameDir, path.basename(file.originalname));
           await moveFile(file.path, dest);
@@ -423,9 +458,13 @@ router.post(
       const cover = req.files?.cover?.[0];
       if (cover) {
         const ext = path.extname(cover.originalname).toLowerCase() || ".jpg";
-        if (useSupabase) {
+        if (useFirebase) {
           const key = `${keyPrefix}/cover${ext}`;
-          coverUrl = await uploadToSupabase(cover.path, key);
+          coverUrl = await uploadToFirebase(
+            cover.path,
+            key,
+            guessContentType(`cover${ext}`)
+          );
         } else {
           const dest = path.join(gameDir, `cover${ext}`);
           await moveFile(cover.path, dest);
@@ -439,9 +478,13 @@ router.post(
       for (let i = 0; i < Math.min(screenFiles.length, 5); i++) {
         const s = screenFiles[i];
         const ext = path.extname(s.originalname).toLowerCase() || ".jpg";
-        if (useSupabase) {
+        if (useFirebase) {
           const key = `${keyPrefix}/screen-${i + 1}${ext}`;
-          const url = await uploadToSupabase(s.path, key);
+          const url = await uploadToFirebase(
+            s.path,
+            key,
+            guessContentType(`screen-${i + 1}${ext}`)
+          );
           screens.push(url);
         } else {
           const dest = path.join(gameDir, `screen-${i + 1}${ext}`);
@@ -523,16 +566,16 @@ router.put(
             : game.kind || "html",
       };
 
-      // หา gameId จาก URL เดิม (รองรับทั้ง local และ Supabase)
+      // หา gameId จาก URL เดิม (รองรับทั้ง local และ Firebase)
       let gameId =
         extractGameIdFromUrl(game.fileUrl) ||
         extractGameIdFromUrl(game.coverUrl) ||
         `${toUpdate.slug}-${uuid().slice(0, 8)}`;
 
       const gameDir = path.join(uploadsRoot, "games", gameId);
-      const keyPrefix = `${SUPABASE_KEY_PREFIX}/${gameId}`;
+      const keyPrefix = `${FIREBASE_KEY_PREFIX}/${gameId}`;
 
-      if (!useSupabase) {
+      if (!useFirebase) {
         await fsp.mkdir(gameDir, { recursive: true });
       }
 
@@ -540,16 +583,20 @@ router.put(
       if (file) {
         if (toUpdate.kind === "html") {
           if (/\.html?$/i.test(file.originalname)) {
-            if (useSupabase) {
+            if (useFirebase) {
               const key = `${keyPrefix}/index.html`;
-              toUpdate.fileUrl = await uploadToSupabase(file.path, key);
+              toUpdate.fileUrl = await uploadToFirebase(
+                file.path,
+                key,
+                "text/html"
+              );
             } else {
               const dest = path.join(gameDir, "index.html");
               await moveFile(file.path, dest);
               toUpdate.fileUrl = `/uploads/games/${gameId}/index.html`;
             }
           } else if (/\.zip$/i.test(file.originalname)) {
-            if (useSupabase) {
+            if (useFirebase) {
               const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
               await fsp.mkdir(unzipDir, { recursive: true });
 
@@ -566,12 +613,10 @@ router.put(
                   .status(400)
                   .json({ message: "ZIP นี้ไม่มี index.html" });
 
-              await uploadDirToSupabase(unzipDir, keyPrefix);
+              await uploadDirToFirebase(unzipDir, keyPrefix);
 
-              toUpdate.fileUrl = supabase.storage
-                .from(SUPABASE_BUCKET)
-                .getPublicUrl(`${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`)
-                .data.publicUrl;
+              const indexKey = `${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`;
+              toUpdate.fileUrl = getFirebasePublicUrl(indexKey);
 
               await rmrf(unzipDir);
             } else {
@@ -603,10 +648,14 @@ router.put(
               .json({ message: "โหมด Downloadable รองรับ .rar เท่านั้น" });
           }
 
-          if (useSupabase) {
+          if (useFirebase) {
             const fname = path.basename(file.originalname);
             const key = `${keyPrefix}/${fname}`;
-            toUpdate.fileUrl = await uploadToSupabase(file.path, key);
+            toUpdate.fileUrl = await uploadToFirebase(
+              file.path,
+              key,
+              "application/x-rar-compressed"
+            );
           } else {
             const dest = path.join(gameDir, path.basename(file.originalname));
             await moveFile(file.path, dest);
@@ -618,9 +667,13 @@ router.put(
       const cover = req.files?.cover?.[0];
       if (cover) {
         const ext = path.extname(cover.originalname).toLowerCase() || ".jpg";
-        if (useSupabase) {
+        if (useFirebase) {
           const key = `${keyPrefix}/cover${ext}`;
-          toUpdate.coverUrl = await uploadToSupabase(cover.path, key);
+          toUpdate.coverUrl = await uploadToFirebase(
+            cover.path,
+            key,
+            guessContentType(`cover${ext}`)
+          );
         } else {
           const dest = path.join(gameDir, `cover${ext}`);
           await moveFile(cover.path, dest);
@@ -634,9 +687,13 @@ router.put(
         for (let i = 0; i < Math.min(screenFiles.length, 5); i++) {
           const s = screenFiles[i];
           const ext = path.extname(s.originalname).toLowerCase() || ".jpg";
-          if (useSupabase) {
+          if (useFirebase) {
             const key = `${keyPrefix}/screen-${i + 1}${ext}`;
-            const url = await uploadToSupabase(s.path, key);
+            const url = await uploadToFirebase(
+              s.path,
+              key,
+              guessContentType(`screen-${i + 1}${ext}`)
+            );
             newShots.push(url);
           } else {
             const dest = path.join(gameDir, `screen-${i + 1}${ext}`);
@@ -945,9 +1002,18 @@ router.delete("/:id", authRequired, async (req, res) => {
       // ลบไฟล์ local เก่า (ถ้ามี)
       deletes.push(rmrf(path.join(uploadsRoot, "games", gameId)));
 
-      // NOTE: ยังไม่ได้ลบไฟล์ใน Supabase ตาม prefix
-      // (ถ้าจะทำจริง ๆ ต้องใช้ supabase.storage.list + remove ตาม key)
-      // แต่ไม่กระทบการใช้งานเกม แค่ไฟล์เก่าค้างอยู่ใน storage
+      // ลบไฟล์ใน Firebase ตาม prefix
+      if (useFirebase) {
+        const prefix = `${FIREBASE_KEY_PREFIX}/${gameId}/`;
+        deletes.push(
+          deletePrefixFromFirebase(prefix).catch((e) =>
+            console.warn(
+              "[games.delete] Firebase deletePrefix failed:",
+              e.message || e
+            )
+          )
+        );
+      }
     }
 
     await Promise.all(deletes);
