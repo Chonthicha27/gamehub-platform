@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.940.0",
+    "@supabase/supabase-js": "^2.86.0",
     "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
