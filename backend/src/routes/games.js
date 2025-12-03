@@ -86,6 +86,7 @@ function initFirebaseBucket() {
   return firebaseBucket;
 }
 
+initFirebaseBucket();
 /* ===== auth ===== */
 function authRequired(req, res, next) {
   // 1) กรณี login ด้วย session/passport (เช่น GitHub OAuth)
