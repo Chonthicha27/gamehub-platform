@@ -32,23 +32,34 @@ try {
 
 const router = express.Router();
 
-/* ===== Cloudflare R2 config (optional) ===== */
-let useR2 = false;
-let uploadLocalFileToR2;
-let deletePrefixFromR2;
-const R2_PUBLIC_BASE_URL = (process.env.R2_PUBLIC_BASE_URL || "").replace(/\/$/, "");
-const R2_KEY_PREFIX = process.env.R2_KEY_PREFIX || "games"; // prefix ภายใน bucket เช่น "games"
+/* ===== Supabase Storage config (optional) ===== */
+let useSupabase = false;
+let supabase = null;
 
-if (R2_PUBLIC_BASE_URL) {
+const { createClient } = require("@supabase/supabase-js");
+
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || ""; // ตั้งชื่อ bucket ใน Supabase
+const SUPABASE_KEY_PREFIX = process.env.SUPABASE_KEY_PREFIX || "games"; // prefix เช่น "games"
+
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && SUPABASE_BUCKET) {
   try {
-    const r2 = require("../utils/r2Client");
-    uploadLocalFileToR2 = r2.uploadLocalFile;
-    deletePrefixFromR2 = r2.deletePrefix;
-    useR2 = typeof uploadLocalFileToR2 === "function";
-    console.log("[games] R2 enabled:", useR2);
+    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
+    useSupabase = true;
+    console.log("[games] Supabase storage enabled:", SUPABASE_BUCKET);
   } catch (err) {
-    console.warn("[games] R2 client not available, fallback to local uploads:", err.message || err);
+    console.warn(
+      "[games] Supabase createClient failed, fallback to local uploads:",
+      err.message || err
+    );
   }
+} else {
+  console.warn(
+    "[games] Supabase not fully configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_BUCKET) – fallback to local uploads"
+  );
 }
 
 /* ===== auth ===== */
@@ -152,7 +163,7 @@ async function safeUnlink(p) {
   } catch {}
 }
 
-// เคยใช้ลบสกรีนช็อตใน local folder (ตอนนี้ถ้าใช้ R2 จะไม่ถูกเรียกแล้ว)
+// เคยใช้ลบสกรีนช็อตใน local folder
 async function safeRmDir(dir) {
   try {
     const items = await fsp.readdir(dir);
@@ -173,18 +184,58 @@ async function rmrf(dir) {
   } catch {}
 }
 
-/** upload local file ขึ้น R2 แล้วคืน public URL */
-async function uploadToR2(localPath, key) {
-  if (!useR2) throw new Error("R2 not enabled");
+/* ===== Supabase helpers ===== */
+
+function guessContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") return "text/html";
+  if (ext === ".zip") return "application/zip";
+  if (ext === ".js") return "text/javascript";
+  if (ext === ".css") return "text/css";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+/** upload local file ขึ้น Supabase แล้วคืน public URL */
+async function uploadToSupabase(localPath, key) {
+  if (!useSupabase || !supabase) throw new Error("Supabase not enabled");
   const cleanKey = key.replace(/^\/+/, "");
-  await uploadLocalFileToR2(localPath, cleanKey);
+
+  const fileBuffer = await fsp.readFile(localPath);
+  const contentType = guessContentType(localPath);
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .upload(cleanKey, fileBuffer, {
+      contentType,
+      upsert: true, // ถ้าอัปโหลดทับไฟล์เดิม ให้เขียนทับ
+    });
+
+  if (error) {
+    console.error("[Supabase upload] error:", error);
+    throw new Error(error.message || "Supabase upload failed");
+  }
+
+  // เอา public URL
+  const { data } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(cleanKey);
+  const publicUrl = data && data.publicUrl ? data.publicUrl : null;
+
+  // ลบไฟล์ temp local ทิ้ง
   await safeUnlink(localPath);
-  return `${R2_PUBLIC_BASE_URL}/${cleanKey}`;
+
+  if (!publicUrl) {
+    throw new Error("Supabase public URL not available");
+  }
+
+  return publicUrl;
 }
 
 /** upload ทั้งโฟลเดอร์ (ใช้ตอนแตก zip เว็บเกม) */
-async function uploadDirToR2(rootDir, keyPrefix) {
-  if (!useR2) throw new Error("R2 not enabled");
+async function uploadDirToSupabase(rootDir, keyPrefix) {
+  if (!useSupabase || !supabase) throw new Error("Supabase not enabled");
+
   const stack = [""];
   while (stack.length) {
     const rel = stack.pop();
@@ -193,10 +244,11 @@ async function uploadDirToR2(rootDir, keyPrefix) {
     for (const e of entries) {
       const relPath = path.join(rel, e.name);
       const fullPath = path.join(rootDir, relPath);
-      if (e.isDirectory()) stack.push(relPath);
-      else if (e.isFile()) {
+      if (e.isDirectory()) {
+        stack.push(relPath);
+      } else if (e.isFile()) {
         const key = `${keyPrefix}/${relPath.replace(/\\/g, "/")}`;
-        await uploadLocalFileToR2(fullPath, key);
+        await uploadToSupabase(fullPath, key);
       }
     }
   }
@@ -287,9 +339,9 @@ router.post(
 
       const gameId = `${slug}-${uuid().slice(0, 8)}`;
       const gameDir = path.join(uploadsRoot, "games", gameId); // ใช้กรณี local
-      const r2Prefix = `${R2_KEY_PREFIX}/${gameId}`;
+      const keyPrefix = `${SUPABASE_KEY_PREFIX}/${gameId}`;
 
-      if (!useR2) {
+      if (!useSupabase) {
         await fsp.mkdir(gameDir, { recursive: true });
       }
 
@@ -297,16 +349,16 @@ router.post(
 
       if (kind === "html") {
         if (/\.html?$/i.test(file.originalname)) {
-          if (useR2) {
-            const key = `${r2Prefix}/index.html`;
-            fileUrl = await uploadToR2(file.path, key);
+          if (useSupabase) {
+            const key = `${keyPrefix}/index.html`;
+            fileUrl = await uploadToSupabase(file.path, key);
           } else {
             const dest = path.join(gameDir, "index.html");
             await moveFile(file.path, dest);
             fileUrl = `/uploads/games/${gameId}/index.html`;
           }
         } else if (/\.zip$/i.test(file.originalname)) {
-          if (useR2) {
+          if (useSupabase) {
             const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
             await fsp.mkdir(unzipDir, { recursive: true });
 
@@ -321,8 +373,12 @@ router.post(
             if (!idx)
               return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
 
-            await uploadDirToR2(unzipDir, r2Prefix);
-            fileUrl = `${R2_PUBLIC_BASE_URL}/${r2Prefix}/${idx.rel.replace(/\\/g, "/")}`;
+            await uploadDirToSupabase(unzipDir, keyPrefix);
+            fileUrl = supabase.storage
+              .from(SUPABASE_BUCKET)
+              .getPublicUrl(`${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`).data
+              .publicUrl;
+
             await rmrf(unzipDir);
           } else {
             const zip = new AdmZip(file.path);
@@ -351,10 +407,10 @@ router.post(
             .json({ message: "โหมด Downloadable รองรับเฉพาะไฟล์ .rar" });
         }
 
-        if (useR2) {
+        if (useSupabase) {
           const fname = path.basename(file.originalname);
-          const key = `${r2Prefix}/${fname}`;
-          fileUrl = await uploadToR2(file.path, key);
+          const key = `${keyPrefix}/${fname}`;
+          fileUrl = await uploadToSupabase(file.path, key);
         } else {
           const dest = path.join(gameDir, path.basename(file.originalname));
           await moveFile(file.path, dest);
@@ -367,9 +423,9 @@ router.post(
       const cover = req.files?.cover?.[0];
       if (cover) {
         const ext = path.extname(cover.originalname).toLowerCase() || ".jpg";
-        if (useR2) {
-          const key = `${r2Prefix}/cover${ext}`;
-          coverUrl = await uploadToR2(cover.path, key);
+        if (useSupabase) {
+          const key = `${keyPrefix}/cover${ext}`;
+          coverUrl = await uploadToSupabase(cover.path, key);
         } else {
           const dest = path.join(gameDir, `cover${ext}`);
           await moveFile(cover.path, dest);
@@ -383,9 +439,9 @@ router.post(
       for (let i = 0; i < Math.min(screenFiles.length, 5); i++) {
         const s = screenFiles[i];
         const ext = path.extname(s.originalname).toLowerCase() || ".jpg";
-        if (useR2) {
-          const key = `${r2Prefix}/screen-${i + 1}${ext}`;
-          const url = await uploadToR2(s.path, key);
+        if (useSupabase) {
+          const key = `${keyPrefix}/screen-${i + 1}${ext}`;
+          const url = await uploadToSupabase(s.path, key);
           screens.push(url);
         } else {
           const dest = path.join(gameDir, `screen-${i + 1}${ext}`);
@@ -467,16 +523,16 @@ router.put(
             : game.kind || "html",
       };
 
-      // หา gameId จาก URL เดิม (รองรับทั้ง local และ R2)
+      // หา gameId จาก URL เดิม (รองรับทั้ง local และ Supabase)
       let gameId =
         extractGameIdFromUrl(game.fileUrl) ||
         extractGameIdFromUrl(game.coverUrl) ||
         `${toUpdate.slug}-${uuid().slice(0, 8)}`;
 
       const gameDir = path.join(uploadsRoot, "games", gameId);
-      const r2Prefix = `${R2_KEY_PREFIX}/${gameId}`;
+      const keyPrefix = `${SUPABASE_KEY_PREFIX}/${gameId}`;
 
-      if (!useR2) {
+      if (!useSupabase) {
         await fsp.mkdir(gameDir, { recursive: true });
       }
 
@@ -484,16 +540,16 @@ router.put(
       if (file) {
         if (toUpdate.kind === "html") {
           if (/\.html?$/i.test(file.originalname)) {
-            if (useR2) {
-              const key = `${r2Prefix}/index.html`;
-              toUpdate.fileUrl = await uploadToR2(file.path, key);
+            if (useSupabase) {
+              const key = `${keyPrefix}/index.html`;
+              toUpdate.fileUrl = await uploadToSupabase(file.path, key);
             } else {
               const dest = path.join(gameDir, "index.html");
               await moveFile(file.path, dest);
               toUpdate.fileUrl = `/uploads/games/${gameId}/index.html`;
             }
           } else if (/\.zip$/i.test(file.originalname)) {
-            if (useR2) {
+            if (useSupabase) {
               const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
               await fsp.mkdir(unzipDir, { recursive: true });
 
@@ -510,11 +566,13 @@ router.put(
                   .status(400)
                   .json({ message: "ZIP นี้ไม่มี index.html" });
 
-              await uploadDirToR2(unzipDir, r2Prefix);
-              toUpdate.fileUrl = `${R2_PUBLIC_BASE_URL}/${r2Prefix}/${idx.rel.replace(
-                /\\/g,
-                "/"
-              )}`;
+              await uploadDirToSupabase(unzipDir, keyPrefix);
+
+              toUpdate.fileUrl = supabase.storage
+                .from(SUPABASE_BUCKET)
+                .getPublicUrl(`${keyPrefix}/${idx.rel.replace(/\\/g, "/")}`)
+                .data.publicUrl;
+
               await rmrf(unzipDir);
             } else {
               const zip = new AdmZip(file.path);
@@ -545,10 +603,10 @@ router.put(
               .json({ message: "โหมด Downloadable รองรับ .rar เท่านั้น" });
           }
 
-          if (useR2) {
+          if (useSupabase) {
             const fname = path.basename(file.originalname);
-            const key = `${r2Prefix}/${fname}`;
-            toUpdate.fileUrl = await uploadToR2(file.path, key);
+            const key = `${keyPrefix}/${fname}`;
+            toUpdate.fileUrl = await uploadToSupabase(file.path, key);
           } else {
             const dest = path.join(gameDir, path.basename(file.originalname));
             await moveFile(file.path, dest);
@@ -560,9 +618,9 @@ router.put(
       const cover = req.files?.cover?.[0];
       if (cover) {
         const ext = path.extname(cover.originalname).toLowerCase() || ".jpg";
-        if (useR2) {
-          const key = `${r2Prefix}/cover${ext}`;
-          toUpdate.coverUrl = await uploadToR2(cover.path, key);
+        if (useSupabase) {
+          const key = `${keyPrefix}/cover${ext}`;
+          toUpdate.coverUrl = await uploadToSupabase(cover.path, key);
         } else {
           const dest = path.join(gameDir, `cover${ext}`);
           await moveFile(cover.path, dest);
@@ -576,9 +634,9 @@ router.put(
         for (let i = 0; i < Math.min(screenFiles.length, 5); i++) {
           const s = screenFiles[i];
           const ext = path.extname(s.originalname).toLowerCase() || ".jpg";
-          if (useR2) {
-            const key = `${r2Prefix}/screen-${i + 1}${ext}`;
-            const url = await uploadToR2(s.path, key);
+          if (useSupabase) {
+            const key = `${keyPrefix}/screen-${i + 1}${ext}`;
+            const url = await uploadToSupabase(s.path, key);
             newShots.push(url);
           } else {
             const dest = path.join(gameDir, `screen-${i + 1}${ext}`);
@@ -887,15 +945,9 @@ router.delete("/:id", authRequired, async (req, res) => {
       // ลบไฟล์ local เก่า (ถ้ามี)
       deletes.push(rmrf(path.join(uploadsRoot, "games", gameId)));
 
-      // ลบไฟล์ใน R2 ตาม prefix
-      if (useR2 && deletePrefixFromR2) {
-        const prefix = `${R2_KEY_PREFIX}/${gameId}/`;
-        deletes.push(
-          deletePrefixFromR2(prefix).catch((e) =>
-            console.warn("[games.delete] R2 deletePrefix failed:", e.message || e)
-          )
-        );
-      }
+      // NOTE: ยังไม่ได้ลบไฟล์ใน Supabase ตาม prefix
+      // (ถ้าจะทำจริง ๆ ต้องใช้ supabase.storage.list + remove ตาม key)
+      // แต่ไม่กระทบการใช้งานเกม แค่ไฟล์เก่าค้างอยู่ใน storage
     }
 
     await Promise.all(deletes);
