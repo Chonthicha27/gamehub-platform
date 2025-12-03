@@ -221,6 +221,7 @@ function guessContentType(filePath) {
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
   if (ext === ".rar") return "application/x-rar-compressed";
+  if (ext === ".wasm") return "application/wasm";
   return "application/octet-stream";
 }
 
@@ -232,21 +233,61 @@ function getFirebasePublicUrl(key) {
   )}`;
 }
 
+/**
+ * เลือก metadata ให้เหมาะกับ Unity WebGL + ไฟล์ที่ถูกบีบอัด (.br / .gz)
+ */
+function buildFirebaseMetadata(localPath, explicitContentType) {
+  const fileName = path.basename(localPath);
+  let contentType = explicitContentType || guessContentType(localPath);
+  let contentEncoding;
+
+  // Unity WebGL ที่บีบอัดด้วย Brotli
+  if (fileName.endsWith(".js.br")) {
+    contentType = "application/javascript";
+    contentEncoding = "br";
+  } else if (fileName.endsWith(".wasm.br")) {
+    contentType = "application/wasm";
+    contentEncoding = "br";
+  } else if (fileName.endsWith(".data.br")) {
+    contentType = "application/octet-stream";
+    contentEncoding = "br";
+  }
+  // Unity WebGL ที่บีบอัดด้วย gzip
+  else if (fileName.endsWith(".js.gz")) {
+    contentType = "application/javascript";
+    contentEncoding = "gzip";
+  } else if (fileName.endsWith(".wasm.gz")) {
+    contentType = "application/wasm";
+    contentEncoding = "gzip";
+  } else if (fileName.endsWith(".data.gz")) {
+    contentType = "application/octet-stream";
+    contentEncoding = "gzip";
+  }
+  // generic .br / .gz อื่น ๆ
+  else if (fileName.endsWith(".br")) {
+    contentEncoding = "br";
+  } else if (fileName.endsWith(".gz")) {
+    contentEncoding = "gzip";
+  }
+
+  const metadata = {};
+  if (contentType) metadata.contentType = contentType;
+  if (contentEncoding) metadata.contentEncoding = contentEncoding;
+  return metadata;
+}
+
 /** upload local file ขึ้น Firebase แล้วคืน public URL */
 async function uploadToFirebase(localPath, key, explicitContentType) {
   const bucket = initFirebaseBucket();
   if (!bucket || !useFirebase) throw new Error("Firebase not enabled");
 
   const cleanKey = key.replace(/^\/+/, "");
-  const contentType = explicitContentType || guessContentType(localPath);
+  const metadata = buildFirebaseMetadata(localPath, explicitContentType);
 
   const options = {
     destination: cleanKey,
-    metadata: {},
+    metadata,
   };
-  if (contentType) {
-    options.metadata.contentType = contentType;
-  }
 
   await bucket.upload(localPath, options);
   await bucket.file(cleanKey).makePublic();
