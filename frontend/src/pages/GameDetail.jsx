@@ -33,8 +33,7 @@ export default function GameDetail() {
 
   // ⭐ โหวตเกมประจำเดือน
   const [votedThisMonth, setVotedThisMonth] = useState(false);
-  const [currentMonthlyVoteGame, setCurrentMonthlyVoteGame] =
-    useState(null);
+  const [currentMonthlyVoteGame, setCurrentMonthlyVoteGame] = useState(null);
   const [monthlyVotes, setMonthlyVotes] = useState(0);
 
   const [openRate, setOpenRate] = useState(false);
@@ -107,9 +106,7 @@ export default function GameDetail() {
 
       // ⭐ จำนวนโหวตเกมนี้ในเดือนนี้
       try {
-        const countRes = await api.get(
-          `/games/${id}/monthly-vote-count`
-        );
+        const countRes = await api.get(`/games/${id}/monthly-vote-count`);
         if (!alive) return;
         setMonthlyVotes(countRes.data.count || 0);
       } catch {
@@ -135,6 +132,43 @@ export default function GameDetail() {
     return String(me._id) === String(up);
   }, [me, game]);
 
+  // ⭐ สกรีนช็อตจาก backend
+  const screenshots = useMemo(() => game?.screens || [], [game]);
+
+  // ⭐ แปลงลิงก์วิดีโอให้เป็น embed URL
+  const videoEmbedUrl = useMemo(() => {
+    const raw = (game?.videoUrl || "").trim();
+    if (!raw) return "";
+
+    try {
+      const url = new URL(raw);
+
+      // YouTube ปกติ
+      if (url.hostname.includes("youtube.com")) {
+        const id = url.searchParams.get("v");
+        return id ? `https://www.youtube.com/embed/${id}` : "";
+      }
+
+      // youtu.be/xxxx
+      if (url.hostname === "youtu.be") {
+        const id = url.pathname.replace("/", "");
+        return id ? `https://www.youtube.com/embed/${id}` : "";
+      }
+
+      // Vimeo
+      if (url.hostname.includes("vimeo.com")) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        const id = parts[parts.length - 1];
+        return id ? `https://player.vimeo.com/video/${id}` : "";
+      }
+
+      // ถ้าเป็น host อื่น ไม่ embed (กัน iframe แปลก ๆ)
+      return "";
+    } catch {
+      return "";
+    }
+  }, [game?.videoUrl]);
+
   const isAdmin = me?.role === "admin";
 
   if (!game) {
@@ -153,9 +187,7 @@ export default function GameDetail() {
     (gid) => String(gid) === String(id)
   );
   const uploader =
-    game.uploader && typeof game.uploader === "object"
-      ? game.uploader
-      : null;
+    game.uploader && typeof game.uploader === "object" ? game.uploader : null;
 
   const onDelete = async () => {
     if (!confirm("ลบเกมนี้ถาวรใช่ไหม?")) return;
@@ -368,11 +400,13 @@ export default function GameDetail() {
                 {!!game.category && (
                   <span className="gd-badge cat">{game.category}</span>
                 )}
-                {(game.tags || []).slice(0, 4).map((t) => (
-                  <span key={t} className="gd-chip-tag">
-                    #{t}
-                  </span>
-                ))}
+                {(game.tags || [])
+                  .slice(0, 4)
+                  .map((t) => (
+                    <span key={t} className="gd-chip-tag">
+                      #{t}
+                    </span>
+                  ))}
               </div>
 
               {/* ⭐ แสดงจำนวนโหวตเกมประจำเดือน */}
@@ -473,6 +507,44 @@ export default function GameDetail() {
             )}
           </section>
 
+          {/* VIDEO (ถ้ามี) */}
+          {videoEmbedUrl && (
+            <section className="gd-section gd-video">
+              <h2 className="gd-sec-title">วิดีโอตัวอย่าง</h2>
+              <div className="gd-video-frame-wrap">
+                <iframe
+                  src={videoEmbedUrl}
+                  title={`${game.title} trailer`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            </section>
+          )}
+
+          {/* SCREENSHOTS (ถ้ามี) */}
+          {screenshots.length > 0 && (
+            <section className="gd-section gd-screens">
+              <h2 className="gd-sec-title">สกรีนช็อต</h2>
+              <div className="gd-screens-grid">
+                {screenshots.map((s, i) => (
+                  <button
+                    key={s || i}
+                    type="button"
+                    className="gd-screen"
+                    onClick={() => window.open(cdn(s), "_blank")}
+                  >
+                    <img
+                      src={cdn(s)}
+                      alt={`Screenshot ${i + 1}`}
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* OWNER/ADMIN-ONLY RATING STRIP */}
           {showSummaryStrip && (
             <section className="gd-section gd-rating-strip">
@@ -494,9 +566,7 @@ export default function GameDetail() {
                     <div className="gd-summary-stars">
                       {"★".repeat(Math.round(summary.avg || 0))}
                       <span className="gd-summary-stars-faint">
-                        {"★".repeat(
-                          5 - Math.round(summary.avg || 0)
-                        )}
+                        {"★".repeat(5 - Math.round(summary.avg || 0))}
                       </span>
                     </div>
                     <div className="gd-summary-count">
@@ -516,9 +586,7 @@ export default function GameDetail() {
               <h2 className="gd-sec-title">
                 Comments{" "}
                 {comments.length ? (
-                  <span className="gd-sec-count">
-                    · {comments.length}
-                  </span>
+                  <span className="gd-sec-count">· {comments.length}</span>
                 ) : null}
               </h2>
               <button
@@ -955,6 +1023,77 @@ function StyleLocal() {
   display:flex;
   flex-wrap:wrap;
   gap:6px;
+}
+
+/* Video section */
+.gd-video{
+  margin-top:6px;
+}
+.gd-video-frame-wrap{
+  margin-top:6px;
+  border-radius:18px;
+  overflow:hidden;
+  aspect-ratio:16/9;
+  background:#020617;
+  border:1px solid rgba(148,163,184,.4);
+  box-shadow:0 18px 40px rgba(0,0,0,.8);
+}
+.gd-video-frame-wrap iframe{
+  width:100%;
+  height:100%;
+  border:0;
+}
+
+/* Screenshots grid */
+.gd-screens-grid {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));  /* ✅ 5 รูปต่อแถว */
+  gap: 10px;
+}
+
+.gd-screen {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  /* ใช้สัดส่วนภาพแทนกำหนด px ตายตัว จะได้ยืดหยุ่นตามความกว้าง */
+  aspect-ratio: 4 / 3;
+  background: #020617;
+}
+
+.gd-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .18s ease, filter .18s ease;
+}
+
+.gd-screen:hover img {
+  transform: scale(1.03);
+  filter: brightness(1.05);
+}
+
+.gd-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(148,163,184,.6);
+  pointer-events: none;
+}
+
+/* ทำให้ responsive หน่อย – จอเล็กลงคอลัมน์ก็น้อยลง */
+@media (max-width: 1024px) {
+  .gd-screens-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .gd-screens-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Rating strip */
