@@ -22,9 +22,7 @@ const MW_CSS = `
   cursor:pointer;
   overflow:hidden;
 }
-.mw-card:hover{
-  transform:translateY(-2px);
-}
+.mw-card:hover{ transform:translateY(-2px); }
 
 .mw-cover{
   flex:0 0 40%;
@@ -35,7 +33,6 @@ const MW_CSS = `
   background-position:center;
   box-shadow:0 18px 42px rgba(0,0,0,.7);
 }
-
 .mw-main{
   flex:1;
   min-width:0;
@@ -44,7 +41,6 @@ const MW_CSS = `
   justify-content:center;
   gap:8px;
 }
-
 .mw-badge{
   display:inline-flex;
   align-items:center;
@@ -59,24 +55,9 @@ const MW_CSS = `
   color:#e5f2ff;
 }
 .mw-badge span{opacity:.9}
-
-.mw-title{
-  margin:4px 0 2px;
-  font-size:22px;
-  font-weight:900;
-}
-
-.mw-tagline{
-  font-size:14px;
-  color:#cbd5f5;
-  max-width:520px;
-}
-
-.mw-meta{
-  font-size:12px;
-  color:#9ca3af;
-}
-
+.mw-title{ margin:4px 0 2px; font-size:22px; font-weight:900; }
+.mw-tagline{ font-size:14px; color:#cbd5f5; max-width:520px; }
+.mw-meta{ font-size:12px; color:#9ca3af; }
 .mw-btn{
   margin-top:14px;
   align-self:flex-start;
@@ -91,26 +72,16 @@ const MW_CSS = `
   transition:.12s ease;
   box-shadow:none;
 }
-.mw-btn:hover{
-  background:#020617;
-}
+.mw-btn:hover{ background:#020617; }
 
-/* จอเล็ก */
 @media (max-width: 960px){
-  .mw-card{
-    flex-direction:column;
-  }
-  .mw-cover{
-    flex:0 0 auto;
-    max-width:100%;
-    width:100%;
-  }
+  .mw-card{ flex-direction:column; }
+  .mw-cover{ flex:0 0 auto; max-width:100%; width:100%; }
 }
 `;
 
 // ===== CSS เพิ่มสำหรับ plays/downloads ในการ์ด Home =====
 const HOME_STATS_CSS = `
-/* --- home card stats (plays/downloads) --- */
 .hc-title-row{
   display:flex;
   align-items:center;
@@ -122,8 +93,6 @@ const HOME_STATS_CSS = `
   flex:1 1 auto;
   min-width:0;
 }
-
-/* ✅ วางชิปไว้ขวาสุด แบบดูโปร */
 .hc-stats{
   flex:0 0 auto;
   display:flex;
@@ -148,9 +117,12 @@ const HOME_STATS_CSS = `
 }
 `;
 
-// ✅ เปลี่ยนอิโมจิให้ดูโปรขึ้น
 const ICON_PLAY = "🎮";
 const ICON_DL = "📥";
+
+// ✅ helper: รองรับทั้งชื่อใหม่ (playsCount/downloadsCount) + fallback ชื่อเก่า (plays/downloads)
+const getPlays = (g) => Number(g?.playsCount ?? g?.plays ?? 0) || 0;
+const getDownloads = (g) => Number(g?.downloadsCount ?? g?.downloads ?? 0) || 0;
 
 export default function Home({ onLoginClick, onRegisterClick }) {
   const nav = useNavigate();
@@ -203,12 +175,8 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       if (Array.isArray(data) && data.length > 0) {
         const row = data[0];
         const game = row._id || row.game || null;
-        if (game) {
-          // อาจเป็น game object ที่ field ไม่ครบ (ไม่มี tagline)
-          setMonthlyWinner({ ...game, votes: row.votes ?? 0 });
-        } else {
-          setMonthlyWinner(null);
-        }
+        if (game) setMonthlyWinner({ ...game, votes: row.votes ?? 0 });
+        else setMonthlyWinner(null);
       } else {
         setMonthlyWinner(null);
       }
@@ -249,17 +217,13 @@ export default function Home({ onLoginClick, onRegisterClick }) {
   const getFullMonthlyWinner = () => {
     if (!monthlyWinner) return null;
     const fromGames = games.find((x) => x._id === monthlyWinner._id);
-    if (fromGames) {
-      return { ...monthlyWinner, ...fromGames };
-    }
-    return monthlyWinner;
+    return fromGames ? { ...monthlyWinner, ...fromGames } : monthlyWinner;
   };
 
   const fullMonthlyWinner = getFullMonthlyWinner();
 
   return (
     <>
-      {/* inject css เฉพาะหน้า Home */}
       <style>{MW_CSS + HOME_STATS_CSS}</style>
 
       {/* HERO SEARCH */}
@@ -286,22 +250,12 @@ export default function Home({ onLoginClick, onRegisterClick }) {
             </div>
             <span className="cmd-divider" />
             <div className="cmdseg cmd-cat">
-              <FancyCategorySelect
-                value={category}
-                onChange={setCategory}
-                label=""
-              />
+              <FancyCategorySelect value={category} onChange={setCategory} label="" />
             </div>
-            <button
-              className="cmdseg cmd-btn cmd-btn--primary"
-              onClick={() => goSearch()}
-            >
+            <button className="cmdseg cmd-btn cmd-btn--primary" onClick={() => goSearch()}>
               Search
             </button>
-            <button
-              className="cmdseg cmd-btn cmd-btn--outline"
-              onClick={() => nav("/upload")}
-            >
+            <button className="cmdseg cmd-btn cmd-btn--outline" onClick={() => nav("/upload")}>
               Upload
             </button>
           </div>
@@ -325,29 +279,19 @@ export default function Home({ onLoginClick, onRegisterClick }) {
               </div>
             </div>
           ) : !fullMonthlyWinner ? (
-            <div className="empty glass-lg">
-              ยังไม่มีเกมที่ชนะโหวตในเดือนนี้
-            </div>
+            <div className="empty glass-lg">ยังไม่มีเกมที่ชนะโหวตในเดือนนี้</div>
           ) : (
             (() => {
               const g = fullMonthlyWinner;
               const cover = cdn(
-                g.coverUrl ||
-                  (Array.isArray(g.screens) && g.screens[0]) ||
-                  "/no-cover.png"
+                g.coverUrl || (Array.isArray(g.screens) && g.screens[0]) || "/no-cover.png"
               );
               const uploader = g?.uploader?.username || "?";
               const votes = g.votes ?? 0;
 
               return (
-                <article
-                  className="mw-card"
-                  onClick={() => nav(`/games/${g._id}`)}
-                >
-                  <div
-                    className="mw-cover"
-                    style={{ backgroundImage: `url(${cover})` }}
-                  />
+                <article className="mw-card" onClick={() => nav(`/games/${g._id}`)}>
+                  <div className="mw-cover" style={{ backgroundImage: `url(${cover})` }} />
                   <div className="mw-main">
                     <div className="mw-badge">
                       🏆 <span>Monthly vote winner</span>
@@ -413,10 +357,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
         ) : games.length === 0 ? (
           <div className="empty glass-lg">
             <div>🕹️ No games yet.</div>
-            <button
-              className="btn btn--primary"
-              onClick={() => onRegisterClick?.()}
-            >
+            <button className="btn btn--primary" onClick={() => onRegisterClick?.()}>
               Be the first creator
             </button>
           </div>
@@ -424,14 +365,15 @@ export default function Home({ onLoginClick, onRegisterClick }) {
           <div className="grid-cards">
             {games.map((g) => {
               const cover = cdn(
-                g.coverUrl ||
-                  (Array.isArray(g.screens) && g.screens[0]) ||
-                  "/no-cover.png"
+                g.coverUrl || (Array.isArray(g.screens) && g.screens[0]) || "/no-cover.png"
               );
               const uploader = g?.uploader?.username || "?";
 
               const playableWeb = isPlayableWeb(g);
               const downloadOnly = isDownloadOnly(g);
+
+              const plays = getPlays(g);
+              const downloads = getDownloads(g);
 
               return (
                 <article
@@ -439,26 +381,23 @@ export default function Home({ onLoginClick, onRegisterClick }) {
                   className="card game-card"
                   onClick={() => nav(`/games/${g._id}`)}
                 >
-                  <div
-                    className="cover"
-                    style={{ backgroundImage: `url(${cover})` }}
-                  />
+                  <div className="cover" style={{ backgroundImage: `url(${cover})` }} />
 
                   <div className="meta">
                     <div className="hc-title-row">
                       <h3 className="title">{g.title}</h3>
 
-                      {/* ✅ แยกโชว์: เกมเล่นบนเว็บ = Plays อย่างเดียว, เกมดาวน์โหลด = Downloads อย่างเดียว */}
+                      {/* ✅ แยกโชว์: เล่นบนเว็บ = Plays อย่างเดียว, ดาวน์โหลด = Downloads อย่างเดียว */}
                       <div className="hc-stats">
                         {playableWeb && !downloadOnly && (
                           <span className="hc-stat" title="Plays">
-                            {ICON_PLAY} <b>{g.plays ?? 0}</b>
+                            {ICON_PLAY} <b>{plays}</b>
                           </span>
                         )}
 
                         {downloadOnly && (
                           <span className="hc-stat" title="Downloads">
-                            {ICON_DL} <b>{g.downloads ?? 0}</b>
+                            {ICON_DL} <b>{downloads}</b>
                           </span>
                         )}
                       </div>
@@ -482,9 +421,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       <footer className="footer-neo">
         <div className="container footer-neo__inner">
           <div className="brandmark">GPX</div>
-          <div className="muted">
-            © {new Date().getFullYear()} Game Platform X
-          </div>
+          <div className="muted">© {new Date().getFullYear()} Game Platform X</div>
           <div className="links">
             <a href="#">Privacy</a>
             <a href="#">Terms</a>

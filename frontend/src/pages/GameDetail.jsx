@@ -8,6 +8,10 @@ import RateReviewModal from "../components/RateReviewModal";
 
 const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(u);
 
+// ✅ เพิ่ม helper แบบเดียวกับหน้า Home (เพื่อแยก Play/Download ให้ถูก)
+const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
+const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
+
 // ✅ ใช้ชุดไอคอนให้เหมือน Home และดูโปรขึ้น
 const ICON_PLAY = "🎮";
 const ICON_DOWNLOAD = "📥";
@@ -190,9 +194,19 @@ export default function GameDetail() {
     };
   }, [id]);
 
-  const playable = useMemo(
-    () => (game ? game.kind === "html" || isHtmlFile(game.fileUrl) : false),
+  // ✅ แยกประเภทเหมือนหน้า Home: downloadOnly / playableWeb
+  const downloadOnly = useMemo(
+    () => (game ? game.kind === "download" || isRarFile(game.fileUrl) : false),
     [game]
+  );
+
+  const playable = useMemo(
+    () =>
+      game
+        ? !downloadOnly &&
+          (game.kind === "html" || isHtmlFile(game.fileUrl) || isZipFile(game.fileUrl))
+        : false,
+    [game, downloadOnly]
   );
 
   const isOwner = useMemo(() => {
@@ -420,7 +434,7 @@ export default function GameDetail() {
         {/* MEDIA */}
         <div className="gd-media">
           <div className="gd-media-inner">
-            {playable && game.kind !== "download" ? (
+            {playable && !downloadOnly ? (
               <iframe
                 title={game.title}
                 src={fileSrc}
@@ -480,7 +494,7 @@ export default function GameDetail() {
 
               <div className="gd-tags-row">
                 <span className="gd-badge kind">
-                  {game.kind === "download" ? "Download" : "HTML / WebGL"}
+                  {downloadOnly ? "Download" : "HTML / WebGL"}
                 </span>
                 {!!game.category && (
                   <span className="gd-badge cat">{game.category}</span>
@@ -502,14 +516,19 @@ export default function GameDetail() {
                 </span>
               </div>
 
-              {/* ✅ Plays / Downloads (เปลี่ยน emoji) */}
+              {/* ✅ Plays / Downloads: แยกตามประเภทเหมือนหน้า Home */}
               <div className="gd-stats-row">
-                <span className="gd-stat">
-                  {ICON_PLAY} Plays: <b>{stats.playsCount || 0}</b>
-                </span>
-                <span className="gd-stat">
-                  {ICON_DOWNLOAD} Downloads: <b>{stats.downloadsCount || 0}</b>
-                </span>
+                {playable && !downloadOnly ? (
+                  <span className="gd-stat">
+                    {ICON_PLAY} Plays: <b>{stats.playsCount || 0}</b>
+                  </span>
+                ) : null}
+
+                {downloadOnly ? (
+                  <span className="gd-stat">
+                    {ICON_DOWNLOAD} Downloads: <b>{stats.downloadsCount || 0}</b>
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -542,7 +561,7 @@ export default function GameDetail() {
                 </div>
 
                 <div className="gd-action-item">
-                  {game.kind === "download" ? (
+                  {downloadOnly ? (
                     <a
                       className="btn btn-main"
                       href={fileSrc}
