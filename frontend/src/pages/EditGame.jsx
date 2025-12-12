@@ -45,11 +45,14 @@ export default function EditGame() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("no-genre");
 
-  // ✅ visibility workflow
-  // visibility = สถานะจริงที่ระบบเซฟ (review/public)
-  // requestedVisibility = สิ่งที่ผู้ใช้ “ขอ” (review/public) เพื่อทำ pending
+  // ✅ visibility
+  // visibility = ค่าจริงในระบบ (public/unlisted/private/review/suspended)
+  // requestedVisibility = คำขอ (เช่น "public" ตอนรออนุมัติ)
   const [visibility, setVisibility] = useState("review");
-  const [requestedVisibility, setRequestedVisibility] = useState("review");
+  const [requestedVisibility, setRequestedVisibility] = useState("");
+
+  // ✅ ตัวเลือกที่ user เลือกใน UI (จะส่งไป backend)
+  const [visibilityChoice, setVisibilityChoice] = useState("review");
 
   // ✅ kind เหมือน UploadGame
   const [kind, setKind] = useState("html"); // "html" | "download"
@@ -102,14 +105,19 @@ export default function EditGame() {
         setDescription(g.description || "");
         setCategory(g.category || "no-genre");
 
-        // ✅ รองรับทั้งระบบใหม่/เก่า
         setVisibility(g.visibility || "review");
-        setRequestedVisibility(g.requestedVisibility || g.visibility || "review");
+        setRequestedVisibility(g.requestedVisibility || "");
+
+        // ✅ ตั้งค่า choice ให้ user เห็น “สิ่งที่ควรเลือก”
+        // ถ้ากำลังรออนุมัติ (visibility=review + requestedVisibility=public) ให้โชว์ว่า user เลือก public อยู่
+        const initialChoice =
+          g.visibility === "review" && g.requestedVisibility === "public"
+            ? "public"
+            : g.visibility || "review";
+        setVisibilityChoice(initialChoice);
 
         // ✅ kind
-        const inferredKind =
-          g.kind ||
-          (isRarFile(g.fileUrl) ? "download" : "html");
+        const inferredKind = g.kind || (isRarFile(g.fileUrl) ? "download" : "html");
         setKind(inferredKind);
 
         setTags(Array.isArray(g.tags) ? g.tags : []);
@@ -154,22 +162,10 @@ export default function EditGame() {
     setNewScreens(files);
   };
 
-  // ✅ เลือก visibility แบบ “ขอ public แต่ต้องรออนุมัติ”
+  // ✅ เลือก visibility
   const onSelectVisibility = (v) => {
-    setRequestedVisibility(v);
-
-    // ถ้าเป็น admin เลือก public ได้จริง
-    if (isAdmin) {
-      setVisibility(v);
-      return;
-    }
-
-    // user ทั่วไป: ขอ public => สถานะจริงยังเป็น review (pending)
-    if (v === "public") {
-      setVisibility("review");
-    } else {
-      setVisibility("review");
-    }
+    setVisibilityChoice(v);
+    // ไม่ต้องไป set visibility ฝั่งจริงเอง ปล่อยให้ backend ตอบกลับมาเป็น source of truth
   };
 
   // ✅ playable / downloadOnly แบบเดียวกับหน้า GameDetail/Home
@@ -188,9 +184,16 @@ export default function EditGame() {
     CATEGORIES.find((c) => c.id === category)?.name || category || "no-genre";
 
   const pendingPublic =
-    !isAdmin &&
-    visibility === "review" &&
-    requestedVisibility === "public";
+    !isAdmin && visibility === "review" && requestedVisibility === "public";
+
+  const visibilityLabel = (() => {
+    if (visibility === "public") return "สาธารณะ";
+    if (visibility === "unlisted") return "Unlisted";
+    if (visibility === "private") return "Private";
+    if (visibility === "review") return pendingPublic ? "รอตรวจ (ขอ public)" : "รอตรวจ/ทดสอบ";
+    if (visibility === "suspended") return "ถูกระงับ";
+    return visibility;
+  })();
 
   const onSave = async () => {
     setError("");
@@ -205,9 +208,11 @@ export default function EditGame() {
       fd.append("description", description);
       fd.append("category", category);
 
-      // ✅ ส่ง “สิ่งที่ผู้ใช้เลือก” ไปเลย
-      // backend จะบังคับเอง: user เลือก public => visibility จริง = review + requestedVisibility=public
-      fd.append("visibility", requestedVisibility);
+      // ✅ ส่งค่า choice ไป backend ตรง ๆ
+      // backend จะบังคับเอง:
+      // - user เลือก public => visibility จริง = review + requestedVisibility=public
+      // - user เลือก private/unlisted/review => เซฟทันที + เคลียร์คำขอ
+      fd.append("visibility", visibilityChoice);
 
       // ✅ kind
       fd.append("kind", kind);
@@ -233,13 +238,19 @@ export default function EditGame() {
       setFileUrl(g.fileUrl || "");
       setScreens(Array.isArray(g.screens) ? g.screens : []);
 
-      // ✅ sync visibility จากค่าจริงที่ backend ส่งกลับ
-      setVisibility(g.visibility || visibility);
-      setRequestedVisibility(g.requestedVisibility || requestedVisibility);
+      // ✅ sync จาก backend
+      setVisibility(g.visibility || "review");
+      setRequestedVisibility(g.requestedVisibility || "");
 
-      // note
-      if (!isAdmin && (g.requestedVisibility === "public" || requestedVisibility === "public")) {
-        setNote("ส่งคำขอเป็นสาธารณะแล้ว ✅ ตอนนี้เกมยังอยู่ในสถานะรอตรวจ (review) จนกว่าแอดมินจะอนุมัติ");
+      // ✅ อัปเดต choice ให้ตรงสถานการณ์หลังเซฟ
+      const newChoice =
+        g.visibility === "review" && g.requestedVisibility === "public"
+          ? "public"
+          : g.visibility || "review";
+      setVisibilityChoice(newChoice);
+
+      if (!isAdmin && g.visibility === "review" && g.requestedVisibility === "public") {
+        setNote("ส่งคำขอเป็นสาธารณะแล้ว ✅ ตอนนี้เกมยังอยู่สถานะรอตรวจ (review) จนกว่าแอดมินจะอนุมัติ");
       } else {
         setNote("บันทึกสำเร็จ ✅");
       }
@@ -260,8 +271,7 @@ export default function EditGame() {
         <div>
           <h1 className="h1">Edit: {title || "game"}</h1>
           <div className="sub">
-            สถานะตอนนี้:{" "}
-            <b>{visibility === "public" ? "สาธารณะ" : "รอตรวจ / ส่วนตัว"}</b>
+            สถานะตอนนี้: <b>{visibilityLabel}</b>
             {pendingPublic ? <span className="pending"> · pending public</span> : null}
           </div>
         </div>
@@ -341,43 +351,58 @@ export default function EditGame() {
                 <option value="html">HTML — .html / .zip (index.html)</option>
               </select>
               <small className="muted">
-                {kind === "html"
-                  ? "โหมดเล่นบนเว็บ (HTML/Zip)"
-                  : "โหมดดาวน์โหลด (RAR)"}
+                {kind === "html" ? "โหมดเล่นบนเว็บ (HTML/Zip)" : "โหมดดาวน์โหลด (RAR)"}
               </small>
             </div>
           </div>
 
-          {/* ✅ Visibility แบบ UploadGame + pending */}
+          {/* ✅ Visibility (ครบ 4 ตัวเลือก) */}
           <div className="f">
             <label>การมองเห็น</label>
+
             <div className="vis-row">
               <button
                 type="button"
-                className={requestedVisibility === "review" ? "vis-pill vis-pill--active" : "vis-pill"}
-                onClick={() => onSelectVisibility("review")}
+                className={visibilityChoice === "private" ? "vis-pill vis-pill--active" : "vis-pill"}
+                onClick={() => onSelectVisibility("private")}
               >
-                <span>🔒 ส่วนตัว / รอตรวจ</span>
-                <span className="vis-sub">ใช้ทดสอบ / มีลิงก์เท่านั้นที่เข้าเล่นได้</span>
+                <span>🔒 Private</span>
+                <span className="vis-sub">เห็นเฉพาะคุณ/แอดมิน</span>
               </button>
 
               <button
                 type="button"
-                className={requestedVisibility === "public" ? "vis-pill vis-pill--active" : "vis-pill"}
+                className={visibilityChoice === "unlisted" ? "vis-pill vis-pill--active" : "vis-pill"}
+                onClick={() => onSelectVisibility("unlisted")}
+              >
+                <span>🔗 Unlisted</span>
+                <span className="vis-sub">ไม่ขึ้น Home/Search แต่คนมีลิงก์เข้าได้</span>
+              </button>
+
+              <button
+                type="button"
+                className={visibilityChoice === "review" ? "vis-pill vis-pill--active" : "vis-pill"}
+                onClick={() => onSelectVisibility("review")}
+              >
+                <span>🕵️ Draft / Review</span>
+                <span className="vis-sub">เก็บไว้ทดสอบ/รอตรวจ (ไม่หลุด public)</span>
+              </button>
+
+              <button
+                type="button"
+                className={visibilityChoice === "public" ? "vis-pill vis-pill--active" : "vis-pill"}
                 onClick={() => onSelectVisibility("public")}
               >
-                <span>🌐 สาธารณะ</span>
+                <span>🌐 Public</span>
                 <span className="vis-sub">
-                  {isAdmin
-                    ? "แอดมินสามารถเผยแพร่ได้ทันที"
-                    : "เมื่อกดบันทึก จะส่งให้แอดมินอนุมัติก่อน"}
+                  {isAdmin ? "แอดมินเผยแพร่ได้ทันที" : "ส่งขออนุมัติก่อนเผยแพร่"}
                 </span>
               </button>
             </div>
 
-            {!isAdmin && requestedVisibility === "public" && (
+            {!isAdmin && visibilityChoice === "public" && (
               <small className="muted">
-                * คุณเลือก “สาธารณะ” แล้ว — หลังบันทึก เกมจะอยู่สถานะ <b>review</b> จนกว่าแอดมินอนุมัติ
+                * คุณเลือก “Public” แล้ว — หลังบันทึก เกมจะอยู่สถานะ <b>review</b> จนกว่าแอดมินอนุมัติ
               </small>
             )}
           </div>
@@ -447,21 +472,19 @@ export default function EditGame() {
             {playable ? (
               <iframe className="stage__frame" src={fileSrc} title="preview" />
             ) : (
-              <img
-                className="stage__image"
-                src={cdn(coverUrl || "/no-cover.png")}
-                alt=""
-              />
+              <img className="stage__image" src={cdn(coverUrl || "/no-cover.png")} alt="" />
             )}
           </div>
 
           <div className="meta">
-            <div className="meta__title"><b>{title || "Untitled"}</b></div>
+            <div className="meta__title">
+              <b>{title || "Untitled"}</b>
+            </div>
             <div className="meta__chips">
               <span className="chip">{categoryLabel}</span>
               <span className="chip">{downloadOnly ? "Download" : "HTML / Web"}</span>
               <span className={`chip ${visibility === "public" ? "chip-ok" : "chip-warn"}`}>
-                {visibility === "public" ? "public" : "review"}
+                {visibility}
               </span>
               {pendingPublic ? <span className="chip chip-pending">pending public</span> : null}
             </div>
@@ -482,10 +505,7 @@ export default function EditGame() {
           <div className="shots">
             {(newScreenPreviews.length > 0 ? newScreenPreviews : screens).map((u, i) => (
               <div key={i} className="shot">
-                <img
-                  src={newScreenPreviews.length > 0 ? u : cdn(u)}
-                  alt={`shot-${i}`}
-                />
+                <img src={newScreenPreviews.length > 0 ? u : cdn(u)} alt={`shot-${i}`} />
               </div>
             ))}
             {screens.length === 0 && newScreenPreviews.length === 0 && (
@@ -524,7 +544,7 @@ function StyleLocal() {
 .chip{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.05);cursor:pointer}
 .actions{display:flex;flex-direction:row;gap:8px;align-items:center;margin-top:2px}
 
-/* visibility pills (เหมือน UploadGame) */
+/* visibility pills */
 .vis-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 .vis-pill{
   flex:1 1 160px;

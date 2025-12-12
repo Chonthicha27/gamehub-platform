@@ -100,7 +100,7 @@ router.get("/games/pending", async (_req, res) => {
 });
 
 /**
- * ✅ Approve: review → public
+ * ✅ Approve: review → public (FIXED)
  */
 router.patch("/games/:id/approve", async (req, res) => {
   const game = await Game.findById(req.params.id).populate(
@@ -109,8 +109,14 @@ router.patch("/games/:id/approve", async (req, res) => {
   );
   if (!game) return res.status(404).json({ message: "Not found" });
 
+  // อนุมัติเฉพาะกรณีที่อยู่ review และขอ public
+  if (game.visibility !== "review" || game.requestedVisibility !== "public") {
+    return res.status(400).json({ message: "No public request to approve" });
+  }
+
   game.visibility = "public";
-  game.requestedVisibility = "public";
+  game.requestedVisibility = "";          // ✅ เคลียร์คำขอ
+  game.visibilityRequestedAt = null;      // ✅ เคลียร์เวลา
   game.suspendedReason = "";
   game.suspendedAt = null;
   await game.save();
@@ -158,13 +164,14 @@ router.patch("/games/:id/suspend", async (req, res) => {
 
 /**
  * ✅ Unsuspend: กลับตาม requestedVisibility
+ * - ถ้าเคย public มาก่อน (requestedVisibility="public") ก็กลับ public
+ * - ถ้าไม่ใช่ ก็กลับ review เป็นค่าเริ่มต้นปลอดภัย
  */
 router.patch("/games/:id/unsuspend", async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game) return res.status(404).json({ message: "Not found" });
 
-  game.visibility =
-    game.requestedVisibility === "public" ? "public" : "review";
+  game.visibility = game.requestedVisibility === "public" ? "public" : "review";
   game.suspendedReason = "";
   game.suspendedAt = null;
   await game.save();

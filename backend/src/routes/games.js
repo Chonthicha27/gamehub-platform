@@ -371,7 +371,7 @@ function isAdminUser(req) {
  * - public: ใครก็อ่านได้
  * - unlisted: ใครก็อ่านได้ (แต่ไม่ขึ้น list/search)
  * - private: owner/admin เท่านั้น (คนอื่น 404)
- * - review: owner/admin เท่านั้น (คนอื่น 404)  ✅ NEW
+ * - review: owner/admin เท่านั้น (คนอื่น 404)
  * - suspended: owner/admin เท่านั้น (คนอื่น 404)
  */
 async function loadGameForRead(req, gameId) {
@@ -401,13 +401,24 @@ async function loadGameForRead(req, gameId) {
 }
 
 /**
- * helper: normalize visibility ตาม rule ใหม่
+ * ✅ helper: normalize visibility ตาม rule ใหม่ (FIXED)
  * - user (ไม่ใช่ admin) ถ้าขอ public -> เปลี่ยนเป็น review + requestedVisibility=public
- * - ถ้าขอ private/unlisted -> ได้ทันที และล้าง requestedVisibility
+ * - ถ้าขอ private/unlisted/review -> ได้ทันที และล้าง requestedVisibility
  * - admin ตั้ง public ได้จริง
+ *
+ * หมายเหตุ: ก่อนหน้านี้ "review" ไม่ถูก handle ทำให้ default เด้งไป "public" (บั๊ก)
  */
 function normalizeVisibilityForSave(req, visInRaw) {
   const visIn = String(visInRaw || "").trim().toLowerCase();
+
+  // ✅ draft / review (เก็บไว้ทดสอบ/รอตรวจ) = review
+  if (visIn === "review" || visIn === "draft" || visIn === "") {
+    return {
+      visibility: "review",
+      requestedVisibility: "",
+      visibilityRequestedAt: null,
+    };
+  }
 
   if (visIn === "private") {
     return {
@@ -441,9 +452,9 @@ function normalizeVisibilityForSave(req, visInRaw) {
     };
   }
 
-  // default
+  // ✅ กันค่ามั่ว: ถ้าเจอค่าอื่น ให้ถือว่า review ปลอดภัย
   return {
-    visibility: "public",
+    visibility: "review",
     requestedVisibility: "",
     visibilityRequestedAt: null,
   };
@@ -863,10 +874,7 @@ router.put(
             }
           } else if (/\.zip$/i.test(file.originalname)) {
             if (useFirebase) {
-              const unzipDir = path.join(
-                tmpDir,
-                `unzip-${gameId}-${Date.now()}`
-              );
+              const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
               await fsp.mkdir(unzipDir, { recursive: true });
 
               const zip = new AdmZip(file.path);
