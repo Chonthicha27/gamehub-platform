@@ -80,7 +80,7 @@ const MW_CSS = `
 }
 `;
 
-// ===== CSS เพิ่มสำหรับ plays/downloads ในการ์ด Home =====
+// ===== CSS เพิ่มสำหรับ plays/downloads =====
 const HOME_STATS_CSS = `
 .hc-title-row{
   display:flex;
@@ -120,53 +120,50 @@ const HOME_STATS_CSS = `
 const ICON_PLAY = "🎮";
 const ICON_DL = "📥";
 
-// ✅ helper: รองรับทั้งชื่อใหม่ (playsCount/downloadsCount) + fallback ชื่อเก่า (plays/downloads)
 const getPlays = (g) => Number(g?.playsCount ?? g?.plays ?? 0) || 0;
-const getDownloads = (g) => Number(g?.downloadsCount ?? g?.downloads ?? 0) || 0;
+const getDownloads = (g) =>
+  Number(g?.downloadsCount ?? g?.downloads ?? 0) || 0;
 
 export default function Home({ onLoginClick, onRegisterClick }) {
   const nav = useNavigate();
 
-  // search bar
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("all");
 
-  // featured list
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ⭐ Monthly winner
   const [monthlyWinner, setMonthlyWinner] = useState(null);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
 
-  // ✅ helpers: แยกประเภทเกมจากไฟล์/ชนิด
-  const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
-  const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
-  const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u || ""));
+  const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u));
+  const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u));
+  const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u));
 
-  // zip เล่นบนเว็บได้, html ก็เล่นบนเว็บได้
   const isPlayableWeb = (g) =>
     g?.kind === "html" || isZipFile(g?.fileUrl) || isHtmlFile(g?.fileUrl);
+  const isDownloadOnly = (g) =>
+    g?.kind === "download" || isRarFile(g?.fileUrl);
 
-  // rar คือดาวน์โหลด, หรือ kind=download คือดาวน์โหลด
-  const isDownloadOnly = (g) => g?.kind === "download" || isRarFile(g?.fileUrl);
-
-  // โหลด Featured & Latest
+  // ===== Home: PUBLIC ONLY =====
   const fetchFeatured = async () => {
     try {
       setLoading(true);
-      const params = { all: 1 };
+      const params = {};
       if (category !== "all") params.category = category;
-      const { data } = await api.get(`/games`, { params });
 
-      // ✅ FIX: กันหลุดจาก backend/แคช/ดีพลอยไม่ตรงกัน -> หน้า Home ต้องโชว์เฉพาะ public เท่านั้น
-      setGames((Array.isArray(data) ? data : []).filter((g) => g?.visibility === "public"));
+      const { data } = await api.get("/games", { params });
+
+      setGames(
+        (Array.isArray(data) ? data : []).filter(
+          (g) => g?.visibility === "public"
+        )
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // โหลดอันดับ 1 โหวตประจำเดือน
   const fetchMonthlyWinner = async () => {
     try {
       setMonthlyLoading(true);
@@ -177,13 +174,15 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       if (Array.isArray(data) && data.length > 0) {
         const row = data[0];
         const game = row._id || row.game || null;
-        if (game) setMonthlyWinner({ ...game, votes: row.votes ?? 0 });
-        else setMonthlyWinner(null);
+        if (game && game.visibility === "public") {
+          setMonthlyWinner({ ...game, votes: row.votes ?? 0 });
+        } else {
+          setMonthlyWinner(null);
+        }
       } else {
         setMonthlyWinner(null);
       }
-    } catch (err) {
-      console.error("Failed to fetch monthly winner:", err);
+    } catch {
       setMonthlyWinner(null);
     } finally {
       setMonthlyLoading(false);
@@ -196,7 +195,6 @@ export default function Home({ onLoginClick, onRegisterClick }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ไปหน้า search
   const goSearch = (kw = q, cat = category) => {
     const sp = new URLSearchParams();
     if (kw && kw.trim()) sp.set("q", kw.trim());
@@ -209,13 +207,11 @@ export default function Home({ onLoginClick, onRegisterClick }) {
     year: "numeric",
   });
 
-  // helper: tagline แบบมี fallback
   const renderTagline = (g) =>
     g?.tagline && g.tagline.trim().length > 0
       ? g.tagline
       : "No short description yet.";
 
-  // ✅ รวมข้อมูล monthlyWinner กับ games ถ้าเจอ id เดียวกัน
   const getFullMonthlyWinner = () => {
     if (!monthlyWinner) return null;
     const fromGames = games.find((x) => x._id === monthlyWinner._id);
