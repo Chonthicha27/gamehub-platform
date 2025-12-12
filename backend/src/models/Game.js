@@ -53,20 +53,29 @@ const GameSchema = new mongoose.Schema(
 
     /**
      * visibility:
-     * - public   = สาธารณะ (ขึ้น home/search และทุกคนเข้าได้)
-     * - unlisted = ไม่ขึ้น home/search แต่คนมีลิงก์เข้าได้
-     * - private  = เห็นเฉพาะเจ้าของ/แอดมิน (คนอื่น 404)
-     * - suspended= ระงับเพราะละเมิดนโยบาย (เข้าถึงแบบจำกัด)
-     *
-     * ✅ NOTE:
-     * - ตัดแนวคิด "review" (รอแอดมินอนุมัติ) ออกในเชิงการใช้งาน
-     *   เพราะ requirement คือ private ไม่ต้องรอ และ public ก็ไม่ต้องรอเช่นกัน
+     * - public     = สาธารณะ (ขึ้น home/search และทุกคนเข้าได้)
+     * - unlisted   = ไม่ขึ้น home/search แต่คนมีลิงก์เข้าได้
+     * - private    = เห็นเฉพาะเจ้าของ/แอดมิน
+     * - review     = รอแอดมินอนุมัติ (เช่น user ขอเปลี่ยนเป็น public)
+     * - suspended  = ระงับ
      */
     visibility: {
       type: String,
-      enum: ["public", "unlisted", "private", "suspended"],
+      enum: ["public", "unlisted", "private", "review", "suspended"],
       default: "public",
     },
+
+    /**
+     * requestedVisibility:
+     * - ใช้เก็บ “สิ่งที่ผู้ใช้ขอ” ตอนต้องรออนุมัติ
+     *   เช่น user ขอ public -> visibility = review, requestedVisibility = public
+     */
+    requestedVisibility: {
+      type: String,
+      enum: ["", "public"],
+      default: "",
+    },
+    visibilityRequestedAt: { type: Date },
 
     // ข้อมูลการระงับเกม (ถ้ามี)
     suspendedReason: { type: String, default: "" },

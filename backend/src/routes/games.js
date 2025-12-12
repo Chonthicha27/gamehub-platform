@@ -363,7 +363,6 @@ function getCurrentMonthKey() {
 /* ===== Access Control (NEW) ===== */
 
 function isAdminUser(req) {
-  // ถ้า session มี role หรือ token มี role
   return String(req.user?.role || "").toLowerCase() === "admin";
 }
 
@@ -372,10 +371,14 @@ function isAdminUser(req) {
  * - public: ใครก็อ่านได้
  * - unlisted: ใครก็อ่านได้ (แต่ไม่ขึ้น list/search)
  * - private: owner/admin เท่านั้น (คนอื่น 404)
- * - suspended: owner/admin เท่านั้น (คนอื่น 404)  (กันหลุด)
+ * - review: owner/admin เท่านั้น (คนอื่น 404)  ✅ NEW
+ * - suspended: owner/admin เท่านั้น (คนอื่น 404)
  */
 async function loadGameForRead(req, gameId) {
-  const g = await Game.findById(gameId).populate("uploader", "username avatarUrl role");
+  const g = await Game.findById(gameId).populate(
+    "uploader",
+    "username avatarUrl role"
+  );
   if (!g) return { game: null, allowed: false };
 
   const meId = req.user?._id ? String(req.user._id) : null;
@@ -389,12 +392,61 @@ async function loadGameForRead(req, gameId) {
     return { game: g, allowed: true, isOwner, isAdmin: admin };
   }
 
-  // private / suspended
+  // private / review / suspended
   if (isOwner || admin) {
     return { game: g, allowed: true, isOwner, isAdmin: admin };
   }
 
   return { game: g, allowed: false, isOwner, isAdmin: admin };
+}
+
+/**
+ * helper: normalize visibility ตาม rule ใหม่
+ * - user (ไม่ใช่ admin) ถ้าขอ public -> เปลี่ยนเป็น review + requestedVisibility=public
+ * - ถ้าขอ private/unlisted -> ได้ทันที และล้าง requestedVisibility
+ * - admin ตั้ง public ได้จริง
+ */
+function normalizeVisibilityForSave(req, visInRaw) {
+  const visIn = String(visInRaw || "").trim().toLowerCase();
+
+  if (visIn === "private") {
+    return {
+      visibility: "private",
+      requestedVisibility: "",
+      visibilityRequestedAt: null,
+    };
+  }
+
+  if (visIn === "unlisted") {
+    return {
+      visibility: "unlisted",
+      requestedVisibility: "",
+      visibilityRequestedAt: null,
+    };
+  }
+
+  if (visIn === "public") {
+    if (isAdminUser(req)) {
+      return {
+        visibility: "public",
+        requestedVisibility: "",
+        visibilityRequestedAt: null,
+      };
+    }
+    // ✅ user ขอ public ต้องรออนุมัติ
+    return {
+      visibility: "review",
+      requestedVisibility: "public",
+      visibilityRequestedAt: new Date(),
+    };
+  }
+
+  // default
+  return {
+    visibility: "public",
+    requestedVisibility: "",
+    visibilityRequestedAt: null,
+  };
 }
 
 /* ===== Stats =====
@@ -425,7 +477,7 @@ function getClientIp(req) {
 
 /**
  * POST /api/games/:id/track-play
- * ✅ ป้องกัน private: คนอื่นยิงไม่ได้ (404)
+ * ✅ ป้องกัน private/review/suspended: คนอื่นยิงไม่ได้ (404)
  */
 router.post("/:id/track-play", readOptionalUser, async (req, res) => {
   try {
@@ -459,7 +511,7 @@ router.post("/:id/track-play", readOptionalUser, async (req, res) => {
 
 /**
  * POST /api/games/:id/track-download
- * ✅ ป้องกัน private: คนอื่นยิงไม่ได้ (404)
+ * ✅ ป้องกัน private/review/suspended: คนอื่นยิงไม่ได้ (404)
  */
 router.post("/:id/track-download", readOptionalUser, async (req, res) => {
   try {
@@ -493,7 +545,7 @@ router.post("/:id/track-download", readOptionalUser, async (req, res) => {
 
 /**
  * GET /api/games/:id/stats
- * ✅ ป้องกัน private: คนอื่นอ่านไม่ได้
+ * ✅ ป้องกัน private/review/suspended: คนอื่นอ่านไม่ได้
  */
 router.get("/:id/stats", readOptionalUser, async (req, res) => {
   try {
@@ -549,14 +601,8 @@ router.post(
       // ✅ FIX: ให้ default category ตรงกับ schema
       const category = b.category || "no-genre";
 
-      // ✅ FIX: รับ visibility ตามที่ user เลือกจริง ๆ (ไม่ต้อง review/admin)
-      const visIn = String(b.visibility || "").trim();
-      const visibility =
-        visIn === "private"
-          ? "private"
-          : visIn === "unlisted"
-          ? "unlisted"
-          : "public";
+      // ✅ NEW RULE: ถ้า user ขอ public -> ต้อง review (ยกเว้น admin)
+      const visPack = normalizeVisibilityForSave(req, b.visibility);
 
       const tags = Array.isArray(b["tags[]"])
         ? b["tags[]"]
@@ -697,7 +743,12 @@ router.post(
         tagline,
         description,
         category,
-        visibility, // ✅ FIX
+
+        // ✅ NEW RULE
+        visibility: visPack.visibility,
+        requestedVisibility: visPack.requestedVisibility,
+        visibilityRequestedAt: visPack.visibilityRequestedAt,
+
         tags,
         fileUrl,
         coverUrl,
@@ -752,9 +803,6 @@ router.put(
         description: b.description ?? game.description,
         category: b.category ?? game.category,
 
-        // ✅ FIX: owner เปลี่ยน visibility ได้ (public/private/unlisted)
-        visibility: game.visibility,
-
         tags: Array.isArray(b["tags[]"])
           ? b["tags[]"]
           : b["tags[]"]
@@ -769,11 +817,19 @@ router.put(
             : b.kind === "html"
             ? "html"
             : game.kind || "html",
+
+        // default keep old
+        visibility: game.visibility,
+        requestedVisibility: game.requestedVisibility || "",
+        visibilityRequestedAt: game.visibilityRequestedAt || null,
       };
 
-      const visIn = String(b.visibility || "").trim();
-      if (visIn === "public" || visIn === "private" || visIn === "unlisted") {
-        toUpdate.visibility = visIn;
+      // ✅ NEW RULE: owner ขอ public -> ต้อง review (ยกเว้น admin)
+      if (typeof b.visibility !== "undefined") {
+        const visPack = normalizeVisibilityForSave(req, b.visibility);
+        toUpdate.visibility = visPack.visibility;
+        toUpdate.requestedVisibility = visPack.requestedVisibility;
+        toUpdate.visibilityRequestedAt = visPack.visibilityRequestedAt;
       }
 
       // หา gameId จาก URL เดิม
@@ -822,7 +878,9 @@ router.put(
 
               const idx = await findIndexHtml(unzipDir);
               if (!idx)
-                return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
+                return res
+                  .status(400)
+                  .json({ message: "ZIP นี้ไม่มี index.html" });
 
               await uploadDirToFirebase(unzipDir, keyPrefix);
 
@@ -839,7 +897,9 @@ router.put(
               }
               const idx = await findIndexHtml(gameDir);
               if (!idx)
-                return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
+                return res
+                  .status(400)
+                  .json({ message: "ZIP นี้ไม่มี index.html" });
               toUpdate.fileUrl = `/uploads/games/${gameId}/${idx.rel}`;
             }
           } else {
@@ -927,6 +987,37 @@ router.put(
   }
 );
 
+/* ===== ADMIN APPROVE =====
+   POST /api/games/:id/approve-public
+   ✅ เฉพาะ admin: อนุมัติคำขอ public
+*/
+router.post("/:id/approve-public", authRequired, async (req, res) => {
+  try {
+    if (!isAdminUser(req)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const game = await Game.findById(req.params.id);
+    if (!game) return res.status(404).json({ message: "Not found" });
+
+    // อนุมัติเฉพาะกรณีที่อยู่ review และขอ public
+    if (game.visibility !== "review" || game.requestedVisibility !== "public") {
+      return res.status(400).json({ message: "No public request to approve" });
+    }
+
+    game.visibility = "public";
+    game.requestedVisibility = "";
+    game.visibilityRequestedAt = null;
+
+    await game.save();
+
+    return res.json({ ok: true, game });
+  } catch (err) {
+    console.error("[approve-public]", err);
+    return res.status(500).json({ message: "approve-public failed" });
+  }
+});
+
 /* ===== READ ===== */
 
 router.get("/search", async (req, res) => {
@@ -1001,7 +1092,7 @@ router.get("/", readOptionalUser, async (req, res) => {
   }
 });
 
-// ✅ Detail: private/suspended กันคนอื่น (404)
+// ✅ Detail: private/review/suspended กันคนอื่น (404)
 router.get("/:id", readOptionalUser, async (req, res) => {
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
@@ -1010,7 +1101,7 @@ router.get("/:id", readOptionalUser, async (req, res) => {
 
 /* ====== REVIEWS ====== */
 
-// ✅ ratings: กัน private
+// ✅ ratings: กัน private/review/suspended
 router.get("/:id/ratings", readOptionalUser, async (req, res) => {
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
@@ -1025,7 +1116,7 @@ router.get("/:id/ratings", readOptionalUser, async (req, res) => {
   });
 });
 
-// ✅ list reviews: กัน private
+// ✅ list reviews: กัน private/review/suspended
 router.get("/:id/reviews", readOptionalUser, async (req, res) => {
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
@@ -1047,10 +1138,8 @@ router.get("/:id/reviews", readOptionalUser, async (req, res) => {
 });
 
 router.get("/:id/reviews/me", readOptionalUser, async (req, res) => {
-  // ถ้าไม่ได้ login ก็ไม่มีรีวิวส่วนตัว
   if (!req.user?._id) return res.json({ score: null, text: "" });
 
-  // ✅ กัน private ด้วย (ถ้าไม่ allowed ก็ 404)
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
 
@@ -1063,7 +1152,6 @@ router.get("/:id/reviews/me", readOptionalUser, async (req, res) => {
 });
 
 router.put("/:id/reviews", authRequired, async (req, res) => {
-  // ✅ กัน private: ต้องเป็น owner/admin หรือเกม public/unlisted
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
 
@@ -1175,7 +1263,9 @@ router.get("/:id/monthly-vote/me", authRequired, async (req, res) => {
     });
   } catch (err) {
     console.error("[monthly-vote] me error:", err);
-    return res.status(500).json({ message: "Failed to load monthly vote status" });
+    return res
+      .status(500)
+      .json({ message: "Failed to load monthly vote status" });
   }
 });
 
@@ -1198,7 +1288,9 @@ router.get("/:id/monthly-vote-count", async (req, res) => {
     return res.json({ monthKey, count });
   } catch (err) {
     console.error("[monthly-vote] count error:", err);
-    return res.status(500).json({ message: "Failed to load monthly vote count" });
+    return res
+      .status(500)
+      .json({ message: "Failed to load monthly vote count" });
   }
 });
 
