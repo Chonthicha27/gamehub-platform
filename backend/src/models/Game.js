@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 
 const GameSchema = new mongoose.Schema(
   {
-    title:       { type: String, required: true, trim: true },
-    slug:        { type: String, index: true, trim: true },
-    tagline:     { type: String, default: "" },
+    title: { type: String, required: true, trim: true },
+    slug: { type: String, index: true, trim: true },
+    tagline: { type: String, default: "" },
     description: { type: String, default: "" },
 
     // หมวดหมู่หลักของเกม (Genre แบบ itch.io)
@@ -39,8 +39,8 @@ const GameSchema = new mongoose.Schema(
 
     // ไฟล์/รูป
     coverUrl: { type: String, default: "" },
-    fileUrl:  { type: String, required: true }, // path ที่เล่น/ดาวน์โหลดจริง
-    screens:  [{ type: String, default: [] }],
+    fileUrl: { type: String, required: true }, // path ที่เล่น/ดาวน์โหลดจริง
+    screens: [{ type: String, default: [] }],
 
     // โหมดไฟล์
     kind: { type: String, enum: ["html", "download"], default: "html" },
@@ -62,11 +62,17 @@ const GameSchema = new mongoose.Schema(
     suspendedReason: { type: String, default: "" },
     suspendedAt: { type: Date },
 
+    // ===== Stats (NEW) =====
+    playsCount: { type: Number, default: 0 },         // จำนวนครั้งที่กดเล่น (Play)
+    downloadsCount: { type: Number, default: 0 },     // จำนวนครั้งที่กดดาวน์โหลด (Download)
+    lastPlayedAt: { type: Date },                     // เวลาที่มีการเล่นล่าสุด
+    lastDownloadedAt: { type: Date },                 // เวลาที่มีการดาวน์โหลดล่าสุด
+
     // ===== Ratings summary =====
     ratingsCount: { type: Number, default: 0 },
-    ratingsAvg:   { type: Number, default: 0 },
+    ratingsAvg: { type: Number, default: 0 },
     // index 0..4 -> 1..5 ดาว
-    ratingsDist:  { type: [Number], default: [0, 0, 0, 0, 0] },
+    ratingsDist: { type: [Number], default: [0, 0, 0, 0, 0] },
   },
   { timestamps: true }
 );
@@ -74,5 +80,9 @@ const GameSchema = new mongoose.Schema(
 // indexes
 GameSchema.index({ createdAt: -1 });
 GameSchema.index({ category: 1 });
+
+// (optional) ถ้าคุณจะทำหน้า “ยอดฮิต” บ่อยๆ เพิ่ม index ได้
+GameSchema.index({ playsCount: -1 });
+GameSchema.index({ downloadsCount: -1 });
 
 module.exports = mongoose.model("Game", GameSchema);

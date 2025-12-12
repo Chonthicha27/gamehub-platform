@@ -1,5 +1,5 @@
 // frontend/src/pages/GameDetail.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import api from "../api/axios";
 import { cdn } from "../api/cdn";
@@ -7,6 +7,10 @@ import FavoriteButton from "../components/FavoriteButton";
 import RateReviewModal from "../components/RateReviewModal";
 
 const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(u);
+
+// ✅ ใช้ชุดไอคอนให้เหมือน Home และดูโปรขึ้น
+const ICON_PLAY = "🎮";
+const ICON_DOWNLOAD = "📥";
 
 export default function GameDetail() {
   const { id } = useParams();
@@ -38,6 +42,51 @@ export default function GameDetail() {
 
   const [openRate, setOpenRate] = useState(false);
 
+  // ✅ NEW: stats (plays/downloads)
+  const [stats, setStats] = useState({
+    playsCount: 0,
+    downloadsCount: 0,
+    lastPlayedAt: null,
+    lastDownloadedAt: null,
+  });
+
+  // ✅ กันยิงซ้ำ (iframe onLoad มักยิงหลายรอบ)
+  const trackedPlayRef = useRef(false);
+  useEffect(() => {
+    trackedPlayRef.current = false;
+  }, [id]);
+
+  // ✅ helper: track play / download
+  const trackPlay = async () => {
+    try {
+      const res = await api.post(`/games/${id}/track-play`);
+      const p = res.data?.playsCount;
+      const last = res.data?.lastPlayedAt;
+      setStats((s) => ({
+        ...s,
+        playsCount: typeof p === "number" ? p : s.playsCount,
+        lastPlayedAt: last ?? s.lastPlayedAt,
+      }));
+    } catch {
+      // ignore (เช่น โดน 429)
+    }
+  };
+
+  const trackDownload = async () => {
+    try {
+      const res = await api.post(`/games/${id}/track-download`);
+      const d = res.data?.downloadsCount;
+      const last = res.data?.lastDownloadedAt;
+      setStats((s) => ({
+        ...s,
+        downloadsCount: typeof d === "number" ? d : s.downloadsCount,
+        lastDownloadedAt: last ?? s.lastDownloadedAt,
+      }));
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     let alive = true;
 
@@ -66,6 +115,26 @@ export default function GameDetail() {
         setSummary(s.data);
       } catch {
         /* ignore */
+      }
+
+      // ✅ NEW: load stats
+      try {
+        const st = await api.get(`/games/${id}/stats`);
+        if (!alive) return;
+        setStats({
+          playsCount: st.data?.playsCount || 0,
+          downloadsCount: st.data?.downloadsCount || 0,
+          lastPlayedAt: st.data?.lastPlayedAt || null,
+          lastDownloadedAt: st.data?.lastDownloadedAt || null,
+        });
+      } catch {
+        if (!alive) return;
+        setStats({
+          playsCount: 0,
+          downloadsCount: 0,
+          lastPlayedAt: null,
+          lastDownloadedAt: null,
+        });
       }
 
       // reviews
@@ -291,12 +360,24 @@ export default function GameDetail() {
 
       setVotedThisMonth(true);
       setCurrentMonthlyVoteGame(game._id);
-      // ใช้ count จาก backend เพื่อให้ตรงกับฐานข้อมูล
       setMonthlyVotes(res.data.count ?? 0);
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || "โหวตไม่สำเร็จ");
     }
+  };
+
+  // ✅ NEW: download click handler
+  const onDownloadClick = async (e) => {
+    e.preventDefault();
+    await trackDownload();
+    window.location.href = fileSrc;
+  };
+
+  // ✅ NEW: fullscreen play click handler
+  const onFullscreenPlay = () => {
+    trackPlay();
+    window.open(fileSrc, "_blank", "noopener,noreferrer");
   };
 
   const prettyDate = (s) =>
@@ -329,7 +410,6 @@ export default function GameDetail() {
     );
   };
 
-  // ⭐ สรุปดาว เจ้าของเกม + แอดมินเท่านั้นที่เห็น
   const showSummaryStrip = isOwner || isAdmin;
 
   return (
@@ -346,6 +426,11 @@ export default function GameDetail() {
                 src={fileSrc}
                 allow="autoplay; fullscreen *; gamepad; xr-spatial-tracking"
                 className="gd-media-frame"
+                onLoad={() => {
+                  if (trackedPlayRef.current) return;
+                  trackedPlayRef.current = true;
+                  trackPlay();
+                }}
               />
             ) : (
               <img src={coverSrc} alt="cover" className="gd-media-image" />
@@ -409,11 +494,21 @@ export default function GameDetail() {
                   ))}
               </div>
 
-              {/* ⭐ แสดงจำนวนโหวตเกมประจำเดือน */}
+              {/* Monthly votes */}
               <div className="gd-monthly-vote-info">
                 ⭐ Monthly votes:{" "}
                 <span className="gd-monthly-vote-count">
                   {monthlyVotes || 0}
+                </span>
+              </div>
+
+              {/* ✅ Plays / Downloads (เปลี่ยน emoji) */}
+              <div className="gd-stats-row">
+                <span className="gd-stat">
+                  {ICON_PLAY} Plays: <b>{stats.playsCount || 0}</b>
+                </span>
+                <span className="gd-stat">
+                  {ICON_DOWNLOAD} Downloads: <b>{stats.downloadsCount || 0}</b>
                 </span>
               </div>
             </div>
@@ -429,7 +524,6 @@ export default function GameDetail() {
                   />
                 </div>
 
-                {/* ปุ่มโหวตเกมประจำเดือน */}
                 <div className="gd-action-item">
                   <button
                     className={`btn btn-vote ${
@@ -449,18 +543,22 @@ export default function GameDetail() {
 
                 <div className="gd-action-item">
                   {game.kind === "download" ? (
-                    <a className="btn btn-main" href={fileSrc} download>
-                      🎮 ดาวน์โหลดเกม
+                    <a
+                      className="btn btn-main"
+                      href={fileSrc}
+                      download
+                      onClick={onDownloadClick}
+                    >
+                      {ICON_DOWNLOAD} ดาวน์โหลดเกม
                     </a>
                   ) : (
-                    <a
+                    <button
+                      type="button"
                       className="btn btn-main btn-outline-main"
-                      href={fileSrc}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={onFullscreenPlay}
                     >
                       ⛶ เล่นแบบเต็มหน้าจอ
-                    </a>
+                    </button>
                   )}
                 </div>
 
@@ -597,7 +695,6 @@ export default function GameDetail() {
               </button>
             </div>
 
-            {/* กล่องเขียนคอมเมนต์ */}
             <div className="gd-comment-form">
               <textarea
                 className="gd-comment-input"
@@ -666,9 +763,7 @@ export default function GameDetail() {
                     </div>
                     <div className="gd-comment-body">
                       {c.content?.trim() || (
-                        <span className="gd-comment-muted">
-                          (ไม่มีข้อความ)
-                        </span>
+                        <span className="gd-comment-muted">(ไม่มีข้อความ)</span>
                       )}
                     </div>
                   </div>
@@ -676,7 +771,6 @@ export default function GameDetail() {
               ))}
             </div>
 
-            {/* ⭐ Player Reviews (owner/admin only) */}
             {(isOwner || isAdmin) && rvTotal > 0 && (
               <div className="gd-reviews-block">
                 <h3 className="gd-sec-title">
@@ -755,14 +849,10 @@ function StyleLocal() {
   text-align:center;
   padding:80px 0;
 }
-
-/* Page wrapper */
 .gd-page{
   max-width:1100px;
   margin:0 auto;
 }
-
-/* Media */
 .gd-media{
   margin-bottom:18px;
 }
@@ -784,15 +874,11 @@ function StyleLocal() {
   border:0;
   object-fit:cover;
 }
-
-/* Main column */
 .gd-main-only{
   display:flex;
   flex-direction:column;
   gap:12px;
 }
-
-/* Header */
 .gd-head{
   display:flex;
   justify-content:space-between;
@@ -819,7 +905,6 @@ function StyleLocal() {
 }
 .gd-meta-piece{display:flex;align-items:center;gap:4px}
 .gd-meta-dot{opacity:.7}
-
 .gd-author{
   display:inline-flex;
   align-items:center;
@@ -834,8 +919,6 @@ function StyleLocal() {
   object-fit:cover;
   border:1px solid rgba(148,163,184,.7);
 }
-
-/* tags / chips */
 .gd-tags-row{
   margin-top:8px;
   display:flex;
@@ -864,8 +947,6 @@ function StyleLocal() {
   background:rgba(15,23,42,.9);
   color:#e5e7eb;
 }
-
-/* Monthly vote info */
 .gd-monthly-vote-info{
   margin-top:6px;
   font-size:12px;
@@ -882,8 +963,20 @@ function StyleLocal() {
   color:#facc15;
   font-weight:600;
 }
-
-/* ACTIONS AREA */
+.gd-stats-row{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  font-size:12px;
+  color:#e5e7eb;
+}
+.gd-stat{
+  padding:3px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.45);
+  background:rgba(15,23,42,.75);
+}
 .gd-head-actions{
   flex-shrink:0;
   display:flex;
@@ -899,13 +992,9 @@ function StyleLocal() {
 .gd-action-item{
   display:flex;
 }
-
-/* ทำให้ปุ่มของ FavoriteButton กลมและขนาดเท่ากับปุ่มอื่น */
 .gd-head-actions button{
   border-radius:999px;
 }
-
-/* Buttons */
 .btn{
   appearance:none;
   border-radius:999px;
@@ -935,8 +1024,6 @@ function StyleLocal() {
   transform:none;
   box-shadow:none;
 }
-
-/* ปุ่มหลัก – เล่นเต็มจอ / ดาวน์โหลด */
 .btn-main{
   background:linear-gradient(135deg,#38bdf8,#0ea5e9);
   border:none;
@@ -952,8 +1039,6 @@ function StyleLocal() {
   color:#f9fafb;
   border-color:transparent;
 }
-
-/* ปุ่มโหวตเกมประจำเดือน */
 .btn-vote{
   background:rgba(234,179,8,.15);
   border:1px solid rgba(234,179,8,.6);
@@ -974,8 +1059,6 @@ function StyleLocal() {
 .btn-vote.voted:hover{
   opacity:.9;
 }
-
-/* ปุ่มแก้ไข */
 .btn-ghost{
   background:rgba(17,24,39,.96);
   border:1px solid rgba(148,163,184,.6);
@@ -984,8 +1067,6 @@ function StyleLocal() {
 .btn-ghost:hover{
   background:rgba(31,41,55,1);
 }
-
-/* ปุ่มลบ */
 .btn-danger{
   background:transparent;
   border:1px solid rgba(248,113,113,.95);
@@ -994,14 +1075,10 @@ function StyleLocal() {
 .btn-danger:hover{
   background:rgba(248,113,113,.18);
 }
-
-/* ปุ่มเล็ก (ใช้ในส่วนคอมเมนต์) */
 .btn-small{
   padding:5px 11px;
   font-size:12px;
 }
-
-/* Sections */
 .gd-section{
   padding-top:10px;
 }
@@ -1011,7 +1088,6 @@ function StyleLocal() {
   font-weight:700;
 }
 .gd-sec-count{font-weight:400;color:#9ca3af;font-size:13px}
-
 .gd-desc{
   margin:0;
   line-height:1.7;
@@ -1024,8 +1100,6 @@ function StyleLocal() {
   flex-wrap:wrap;
   gap:6px;
 }
-
-/* Video section */
 .gd-video{
   margin-top:6px;
 }
@@ -1043,24 +1117,19 @@ function StyleLocal() {
   height:100%;
   border:0;
 }
-
-/* Screenshots grid */
 .gd-screens-grid {
   margin-top: 6px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));  /* ✅ 5 รูปต่อแถว */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
-
 .gd-screen {
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  /* ใช้สัดส่วนภาพแทนกำหนด px ตายตัว จะได้ยืดหยุ่นตามความกว้าง */
   aspect-ratio: 4 / 3;
   background: #020617;
 }
-
 .gd-screen img {
   display: block;
   width: 100%;
@@ -1068,12 +1137,10 @@ function StyleLocal() {
   object-fit: cover;
   transition: transform .18s ease, filter .18s ease;
 }
-
 .gd-screen:hover img {
   transform: scale(1.03);
   filter: brightness(1.05);
 }
-
 .gd-screen::after {
   content: "";
   position: absolute;
@@ -1082,21 +1149,16 @@ function StyleLocal() {
   box-shadow: inset 0 0 0 1px rgba(148,163,184,.6);
   pointer-events: none;
 }
-
-/* ทำให้ responsive หน่อย – จอเล็กลงคอลัมน์ก็น้อยลง */
 @media (max-width: 1024px) {
   .gd-screens-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-
 @media (max-width: 640px) {
   .gd-screens-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
-/* Rating strip */
 .gd-rating-strip{
   margin-top:4px;
 }
@@ -1129,8 +1191,6 @@ function StyleLocal() {
 .gd-rating-top .dist{
   flex:1 1 auto;
 }
-
-/* summary score */
 .gd-summary-score{
   display:flex;
   flex-direction:column;
@@ -1152,8 +1212,6 @@ function StyleLocal() {
   font-size:12px;
   color:#9ca3af;
 }
-
-/* Rating distribution bars */
 .dist{
   display:flex;
   flex-direction:column;
@@ -1183,8 +1241,6 @@ function StyleLocal() {
   text-align:right;
   color:#9ca3af;
 }
-
-/* comments */
 .gd-comments{
   margin-top:10px;
   padding-top:12px;
@@ -1253,8 +1309,6 @@ function StyleLocal() {
   font-size:11px;
   color:#9ca3af;
 }
-
-/* ปุ่ม Report */
 .gd-report-btn{
   margin-left:8px;
   border:none;
@@ -1267,7 +1321,6 @@ function StyleLocal() {
 .gd-report-btn:hover{
   text-decoration:underline;
 }
-
 .gd-comment-body{
   margin-top:3px;
   line-height:1.6;
@@ -1285,15 +1338,11 @@ function StyleLocal() {
   font-size:13px;
   color:#e5e7eb;
 }
-
-/* reviews block */
 .gd-reviews-block{
   margin-top:18px;
   padding-top:10px;
   border-top:1px dashed rgba(55,65,81,.7);
 }
-
-/* responsive */
 @media (max-width: 720px){
   .gd-head{
     flex-direction:column;

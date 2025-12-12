@@ -87,6 +87,7 @@ function initFirebaseBucket() {
 }
 
 initFirebaseBucket();
+
 /* ===== auth ===== */
 function authRequired(req, res, next) {
   // 1) กรณี login ด้วย session/passport (เช่น GitHub OAuth)
@@ -105,7 +106,10 @@ function authRequired(req, res, next) {
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) {
     try {
-      const payload = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      const payload = jwt.verify(
+        h.slice(7),
+        process.env.JWT_SECRET || "devsecret"
+      );
       req.user = { _id: String(payload.id || payload.uid) };
       return next();
     } catch {}
@@ -128,7 +132,10 @@ function readOptionalUser(req, _res, next) {
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) {
     try {
-      const payload = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      const payload = jwt.verify(
+        h.slice(7),
+        process.env.JWT_SECRET || "devsecret"
+      );
       req.user = { _id: String(payload.id || payload.uid) };
     } catch {}
   }
@@ -374,6 +381,118 @@ function getCurrentMonthKey() {
   const now = new Date();
   return now.toISOString().slice(0, 7); // "2025-11"
 }
+
+/* ===== Stats (NEW) =====
+   simple in-memory rate limit ต่อ IP กันยิงสแปมแบบเบา ๆ
+*/
+const _hit = new Map(); // key -> { t, c }
+function tooMany(key, limit = 30, windowMs = 60_000) {
+  const now = Date.now();
+  const rec = _hit.get(key);
+  if (!rec) {
+    _hit.set(key, { t: now, c: 1 });
+    return false;
+  }
+  if (now - rec.t > windowMs) {
+    _hit.set(key, { t: now, c: 1 });
+    return false;
+  }
+  rec.c += 1;
+  _hit.set(key, rec);
+  return rec.c > limit;
+}
+
+function getClientIp(req) {
+  const xf = req.headers["x-forwarded-for"];
+  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
+  return req.ip || req.connection?.remoteAddress || "unknown";
+}
+
+/**
+ * POST /api/games/:id/track-play
+ * นับ “เล่นเกม” 1 ครั้ง (แนะนำให้ frontend ยิงตอนกดปุ่ม Play หรือเปิดหน้าเล่น)
+ */
+router.post("/:id/track-play", async (req, res) => {
+  try {
+    const ip = getClientIp(req);
+    const key = `play:${req.params.id}:${ip}`;
+    if (tooMany(key, 20, 60_000)) {
+      return res.status(429).json({ message: "Too many requests" });
+    }
+
+    const g = await Game.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { playsCount: 1 }, $set: { lastPlayedAt: new Date() } },
+      { new: true }
+    ).lean();
+
+    if (!g) return res.status(404).json({ message: "Not found" });
+
+    return res.json({
+      ok: true,
+      playsCount: g.playsCount || 0,
+      lastPlayedAt: g.lastPlayedAt || null,
+    });
+  } catch (err) {
+    console.error("[track-play]", err);
+    return res.status(500).json({ message: "track-play failed" });
+  }
+});
+
+/**
+ * POST /api/games/:id/track-download
+ * นับ “ดาวน์โหลด” 1 ครั้ง (แนะนำให้ frontend ยิงก่อนเริ่มดาวน์โหลดจริง)
+ */
+router.post("/:id/track-download", async (req, res) => {
+  try {
+    const ip = getClientIp(req);
+    const key = `dl:${req.params.id}:${ip}`;
+    if (tooMany(key, 20, 60_000)) {
+      return res.status(429).json({ message: "Too many requests" });
+    }
+
+    const g = await Game.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { downloadsCount: 1 }, $set: { lastDownloadedAt: new Date() } },
+      { new: true }
+    ).lean();
+
+    if (!g) return res.status(404).json({ message: "Not found" });
+
+    return res.json({
+      ok: true,
+      downloadsCount: g.downloadsCount || 0,
+      lastDownloadedAt: g.lastDownloadedAt || null,
+    });
+  } catch (err) {
+    console.error("[track-download]", err);
+    return res.status(500).json({ message: "track-download failed" });
+  }
+});
+
+/**
+ * GET /api/games/:id/stats
+ * ดึงสถิติไปโชว์หน้าเกม
+ */
+router.get("/:id/stats", async (req, res) => {
+  try {
+    const g = await Game.findById(req.params.id)
+      .select("playsCount downloadsCount lastPlayedAt lastDownloadedAt")
+      .lean();
+
+    if (!g) return res.status(404).json({ message: "Not found" });
+
+    return res.json({
+      playsCount: g.playsCount || 0,
+      downloadsCount: g.downloadsCount || 0,
+      lastPlayedAt: g.lastPlayedAt || null,
+      lastDownloadedAt: g.lastDownloadedAt || null,
+    });
+  } catch (err) {
+    console.error("[stats]", err);
+    return res.status(500).json({ message: "stats failed" });
+  }
+});
 
 /* ===== CREATE ===== */
 router.post(
@@ -766,7 +885,10 @@ router.get("/search", async (req, res) => {
     const q = String(req.query.q || "").trim();
     const category = String(req.query.category || "").trim();
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "24", 10), 1), 60);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "24", 10), 1),
+      60
+    );
 
     const cond = {};
     if (q) {
@@ -831,10 +953,7 @@ router.get("/:id/ratings", async (req, res) => {
 // รายการรีวิว (แบ่งหน้า)
 router.get("/:id/reviews", async (req, res) => {
   const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-  const limit = Math.min(
-    Math.max(parseInt(req.query.limit || "10", 10), 1),
-    50
-  );
+  const limit = Math.min(Math.max(parseInt(req.query.limit || "10", 10), 1), 50);
 
   const [items, total] = await Promise.all([
     Review.find({ game: req.params.id })
@@ -895,11 +1014,6 @@ router.delete("/:id/reviews/:rid", authRequired, async (req, res) => {
 
 /* ====== MONTHLY VOTE (เกมประจำเดือน) ====== */
 
-/**
- * POST /api/games/:id/monthly-vote
- * โหวตเกมนี้เป็น "เกมประจำเดือน" ของผู้ใช้ (เดือนปัจจุบัน)
- * - 1 user / เดือน โหวตได้ 1 เกม (เปลี่ยนโหวต = อัปเดต record เดิม)
- */
 router.post("/:id/monthly-vote", authRequired, async (req, res) => {
   if (!MonthlyVote) {
     return res
@@ -951,10 +1065,6 @@ router.post("/:id/monthly-vote", authRequired, async (req, res) => {
   }
 });
 
-/**
- * GET /api/games/:id/monthly-vote/me
- * ดูสถานะโหวตประจำเดือนของ user (เดือนปัจจุบัน)
- */
 router.get("/:id/monthly-vote/me", authRequired, async (req, res) => {
   if (!MonthlyVote) {
     return res
@@ -985,16 +1095,10 @@ router.get("/:id/monthly-vote/me", authRequired, async (req, res) => {
     });
   } catch (err) {
     console.error("[monthly-vote] me error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to load monthly vote status" });
+    return res.status(500).json({ message: "Failed to load monthly vote status" });
   }
 });
 
-/**
- * GET /api/games/:id/monthly-vote-count
- * จำนวนโหวตของเกมนี้ในเดือนปัจจุบัน
- */
 router.get("/:id/monthly-vote-count", async (req, res) => {
   if (!MonthlyVote) {
     return res
@@ -1014,9 +1118,7 @@ router.get("/:id/monthly-vote-count", async (req, res) => {
     return res.json({ monthKey, count });
   } catch (err) {
     console.error("[monthly-vote] count error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to load monthly vote count" });
+    return res.status(500).json({ message: "Failed to load monthly vote count" });
   }
 });
 

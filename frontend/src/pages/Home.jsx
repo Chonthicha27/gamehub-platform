@@ -108,6 +108,50 @@ const MW_CSS = `
 }
 `;
 
+// ===== CSS เพิ่มสำหรับ plays/downloads ในการ์ด Home =====
+const HOME_STATS_CSS = `
+/* --- home card stats (plays/downloads) --- */
+.hc-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.hc-title-row .title{
+  margin:0;
+  flex:1 1 auto;
+  min-width:0;
+}
+
+/* ✅ วางชิปไว้ขวาสุด แบบดูโปร */
+.hc-stats{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:#a7b8c9;
+}
+.hc-stat{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(2,6,23,.65);
+  line-height:1;
+}
+.hc-stat b{
+  color:#eaf4ff;
+  font-weight:800;
+}
+`;
+
+// ✅ เปลี่ยนอิโมจิให้ดูโปรขึ้น
+const ICON_PLAY = "🎮";
+const ICON_DL = "📥";
+
 export default function Home({ onLoginClick, onRegisterClick }) {
   const nav = useNavigate();
 
@@ -122,6 +166,18 @@ export default function Home({ onLoginClick, onRegisterClick }) {
   // ⭐ Monthly winner
   const [monthlyWinner, setMonthlyWinner] = useState(null);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
+
+  // ✅ helpers: แยกประเภทเกมจากไฟล์/ชนิด
+  const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
+  const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
+  const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u || ""));
+
+  // zip เล่นบนเว็บได้, html ก็เล่นบนเว็บได้
+  const isPlayableWeb = (g) =>
+    g?.kind === "html" || isZipFile(g?.fileUrl) || isHtmlFile(g?.fileUrl);
+
+  // rar คือดาวน์โหลด, หรือ kind=download คือดาวน์โหลด
+  const isDownloadOnly = (g) => g?.kind === "download" || isRarFile(g?.fileUrl);
 
   // โหลด Featured & Latest
   const fetchFeatured = async () => {
@@ -204,7 +260,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
   return (
     <>
       {/* inject css เฉพาะหน้า Home */}
-      <style>{MW_CSS}</style>
+      <style>{MW_CSS + HOME_STATS_CSS}</style>
 
       {/* HERO SEARCH */}
       <section className="hero-neo">
@@ -248,14 +304,6 @@ export default function Home({ onLoginClick, onRegisterClick }) {
             >
               Upload
             </button>
-          </div>
-
-          <div className="pill-row" style={{ justifyContent: "center" }}>
-            {[].map((t) => (
-              <button key={t} className="pill" onClick={() => goSearch()}>
-                {t}
-              </button>
-            ))}
           </div>
         </div>
       </section>
@@ -306,13 +354,11 @@ export default function Home({ onLoginClick, onRegisterClick }) {
                     </div>
                     <h3 className="mw-title">{g.title}</h3>
 
-                    {/* ✅ แสดง tagline จากตัวเต็ม (มีแล้วแน่นอน) */}
                     <p className="mw-tagline">{renderTagline(g)}</p>
 
                     <p className="mw-meta">
-                      #1 this month · {g.category || "all"} ·{" "}
-                      {votes || 0} {votes === 1 ? "vote" : "votes"} · by{" "}
-                      {uploader}
+                      #1 this month · {g.category || "all"} · {votes || 0}{" "}
+                      {votes === 1 ? "vote" : "votes"} · by {uploader}
                     </p>
 
                     <button
@@ -338,7 +384,6 @@ export default function Home({ onLoginClick, onRegisterClick }) {
         <div className="section__head">
           <h2 className="section__title">Featured &amp; Latest</h2>
 
-          {/* ลิงก์ See all สไตล์ตัวหนังสือแบบเรียบ ๆ */}
           {games.length > 0 && (
             <a
               href="/search"
@@ -385,6 +430,9 @@ export default function Home({ onLoginClick, onRegisterClick }) {
               );
               const uploader = g?.uploader?.username || "?";
 
+              const playableWeb = isPlayableWeb(g);
+              const downloadOnly = isDownloadOnly(g);
+
               return (
                 <article
                   key={g._id}
@@ -395,11 +443,31 @@ export default function Home({ onLoginClick, onRegisterClick }) {
                     className="cover"
                     style={{ backgroundImage: `url(${cover})` }}
                   />
+
                   <div className="meta">
-                    <h3 className="title">{g.title}</h3>
+                    <div className="hc-title-row">
+                      <h3 className="title">{g.title}</h3>
+
+                      {/* ✅ แยกโชว์: เกมเล่นบนเว็บ = Plays อย่างเดียว, เกมดาวน์โหลด = Downloads อย่างเดียว */}
+                      <div className="hc-stats">
+                        {playableWeb && !downloadOnly && (
+                          <span className="hc-stat" title="Plays">
+                            {ICON_PLAY} <b>{g.plays ?? 0}</b>
+                          </span>
+                        )}
+
+                        {downloadOnly && (
+                          <span className="hc-stat" title="Downloads">
+                            {ICON_DL} <b>{g.downloads ?? 0}</b>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     <p className="muted" style={{ fontSize: 13 }}>
                       {renderTagline(g)}
                     </p>
+
                     <p className="muted" style={{ fontSize: 12 }}>
                       {g.category || "all"} · by {uploader}
                     </p>
