@@ -158,7 +158,9 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       const params = { all: 1 };
       if (category !== "all") params.category = category;
       const { data } = await api.get(`/games`, { params });
-      setGames(data || []);
+
+      // ✅ FIX: กันหลุดจาก backend/แคช/ดีพลอยไม่ตรงกัน -> หน้า Home ต้องโชว์เฉพาะ public เท่านั้น
+      setGames((Array.isArray(data) ? data : []).filter((g) => g?.visibility === "public"));
     } finally {
       setLoading(false);
     }

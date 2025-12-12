@@ -522,7 +522,18 @@ router.post(
       const tagline = b.tagline || "";
       const description = b.description || "";
       const category = b.category || "all";
-      // เกมใหม่ทุกเกมเป็น review
+
+      // ✅ FIX: รับ visibility จาก owner เฉพาะ private/unlisted
+      // - ถ้าเลือก public → ยังเข้า review เหมือนเดิม (รอแอดมินปล่อย)
+      // - ถ้าเลือก private/unlisted → เก็บตามนั้น (ไม่ขึ้น home/search)
+      const visIn = String(b.visibility || "").trim();
+      const visibility =
+        visIn === "private"
+          ? "private"
+          : visIn === "unlisted"
+          ? "unlisted"
+          : "review";
+
       const tags = Array.isArray(b["tags[]"])
         ? b["tags[]"]
         : b["tags[]"]
@@ -662,7 +673,7 @@ router.post(
         tagline,
         description,
         category,
-        visibility: "review", // เกมใหม่ = ไปเข้าคิวรีวิวก่อน
+        visibility, // ✅ FIX: ใช้ค่าที่คำนวณด้านบน
         tags,
         fileUrl,
         coverUrl,
@@ -713,7 +724,10 @@ router.put(
         tagline: b.tagline ?? game.tagline,
         description: b.description ?? game.description,
         category: b.category ?? game.category,
-        visibility: game.visibility, // ไม่ให้ owner เปลี่ยนเอง
+
+        // ✅ FIX: owner เปลี่ยนได้เฉพาะ private/unlisted
+        visibility: game.visibility,
+
         tags: Array.isArray(b["tags[]"])
           ? b["tags[]"]
           : b["tags[]"]
@@ -728,6 +742,12 @@ router.put(
             ? "html"
             : game.kind || "html",
       };
+
+      // ✅ FIX: รับ visibility จาก owner เฉพาะ private/unlisted
+      const visIn = String(b.visibility || "").trim();
+      if (visIn === "private" || visIn === "unlisted") {
+        toUpdate.visibility = visIn;
+      }
 
       // หา gameId จาก URL เดิม (รองรับทั้ง local และ Firebase)
       let gameId =
@@ -915,26 +935,69 @@ router.get("/search", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
-  // list ปกติให้เห็นเฉพาะ public
-  const q = { visibility: "public" };
-  if (req.query.uploader) q.uploader = req.query.uploader;
-  if (req.query.kind) q.kind = req.query.kind;
+// ✅ FIX: list route รองรับ 2 โหมด
+// - /api/games            => public only (เอาไว้ใช้ Home/Discover)
+// - /api/games?mine=1     => ของฉันทั้งหมด (ต้อง login)
+router.get("/", readOptionalUser, async (req, res) => {
+  try {
+    const mine = String(req.query.mine || "") === "1";
 
-  const list = await Game.find(q)
-    .populate("uploader", "username avatarUrl")
-    .sort({ createdAt: -1 });
+    // ของฉัน
+    if (mine) {
+      if (!req.user?._id) return res.status(401).json({ message: "Unauthorized" });
 
-  res.json(list);
+      const q = { uploader: req.user._id };
+      if (req.query.kind) q.kind = req.query.kind;
+
+      const list = await Game.find(q)
+        .populate("uploader", "username avatarUrl")
+        .sort({ createdAt: -1 });
+
+      return res.json(list);
+    }
+
+    // list ปกติให้เห็นเฉพาะ public
+    const q = { visibility: "public" };
+    if (req.query.uploader) q.uploader = req.query.uploader;
+    if (req.query.kind) q.kind = req.query.kind;
+
+    const list = await Game.find(q)
+      .populate("uploader", "username avatarUrl")
+      .sort({ createdAt: -1 });
+
+    return res.json(list);
+  } catch (e) {
+    console.error("GET /games", e);
+    return res.status(500).json({ message: "list failed" });
+  }
 });
 
-router.get("/:id", async (req, res) => {
+// ✅ FIX: กันการเข้าถึงเกม private/review (ต้องเป็น owner/admin)
+// unlisted = คนมีลิ้งเข้าได้ แต่ไม่ขึ้น list/search
+router.get("/:id", readOptionalUser, async (req, res) => {
   const g = await Game.findById(req.params.id).populate(
     "uploader",
     "username avatarUrl"
   );
   if (!g) return res.status(404).json({ message: "Not found" });
-  res.json(g);
+
+  const meId = req.user?._id ? String(req.user._id) : null;
+  const ownerId = g.uploader?._id ? String(g.uploader._id) : String(g.uploader);
+  const isOwner = !!meId && meId === ownerId;
+  const isAdmin = req.user?.role === "admin" || g?.uploader?.role === "admin"; // เผื่อกรณีมี role จาก session
+
+  // public/unlisted เข้าได้
+  if (g.visibility === "public" || g.visibility === "unlisted") {
+    return res.json(g);
+  }
+
+  // private/review เข้าได้เฉพาะ owner/admin
+  if (isOwner || isAdmin) {
+    return res.json(g);
+  }
+
+  // ซ่อนว่าเกมมีอยู่ (กันเดาสุ่ม id)
+  return res.status(404).json({ message: "Not found" });
 });
 
 /* ====== REVIEWS ====== */

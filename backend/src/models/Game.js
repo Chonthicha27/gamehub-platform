@@ -51,10 +51,15 @@ const GameSchema = new mongoose.Schema(
       required: true,
     },
 
-    // visibility: review = รออนุมัติ, public = ออนไลน์, suspended = ระงับเพราะละเมิดนโยบาย
+    // visibility:
+    // - review = รออนุมัติ
+    // - public = ออนไลน์ (ขึ้นหน้า home/search)
+    // - unlisted = ไม่ขึ้นหน้า home/search แต่คนมีลิ้งเข้าได้
+    // - private = เห็นเฉพาะเจ้าของ/แอดมิน
+    // - suspended = ระงับเพราะละเมิดนโยบาย
     visibility: {
       type: String,
-      enum: ["review", "public", "suspended"],
+      enum: ["review", "public", "unlisted", "private", "suspended"],
       default: "review",
     },
 
@@ -63,10 +68,10 @@ const GameSchema = new mongoose.Schema(
     suspendedAt: { type: Date },
 
     // ===== Stats (NEW) =====
-    playsCount: { type: Number, default: 0 },         // จำนวนครั้งที่กดเล่น (Play)
-    downloadsCount: { type: Number, default: 0 },     // จำนวนครั้งที่กดดาวน์โหลด (Download)
-    lastPlayedAt: { type: Date },                     // เวลาที่มีการเล่นล่าสุด
-    lastDownloadedAt: { type: Date },                 // เวลาที่มีการดาวน์โหลดล่าสุด
+    playsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดเล่น (Play)
+    downloadsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดดาวน์โหลด (Download)
+    lastPlayedAt: { type: Date }, // เวลาที่มีการเล่นล่าสุด
+    lastDownloadedAt: { type: Date }, // เวลาที่มีการดาวน์โหลดล่าสุด
 
     // ===== Ratings summary =====
     ratingsCount: { type: Number, default: 0 },
