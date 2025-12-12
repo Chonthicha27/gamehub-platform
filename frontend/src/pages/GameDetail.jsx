@@ -16,6 +16,23 @@ const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
 const ICON_PLAY = "🎮";
 const ICON_DOWNLOAD = "📥";
 
+function visibilityLabel(v) {
+  switch (v) {
+    case "public":
+      return "สาธารณะ";
+    case "review":
+      return "รอตรวจ / ยังไม่เผยแพร่";
+    case "unlisted":
+      return "Unlisted (ลิงก์เท่านั้น)";
+    case "private":
+      return "Private (เฉพาะฉัน)";
+    case "suspended":
+      return "ถูกระงับ";
+    default:
+      return v || "—";
+  }
+}
+
 export default function GameDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -72,7 +89,7 @@ export default function GameDetail() {
         lastPlayedAt: last ?? s.lastPlayedAt,
       }));
     } catch {
-      // ignore (เช่น โดน 429)
+      // ignore
     }
   };
 
@@ -117,9 +134,7 @@ export default function GameDetail() {
         const s = await api.get(`/games/${id}/ratings`);
         if (!alive) return;
         setSummary(s.data);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
 
       // ✅ NEW: load stats
       try {
@@ -165,7 +180,7 @@ export default function GameDetail() {
         setComments([]);
       }
 
-      // ⭐ สถานะโหวตประจำเดือน
+      // monthly vote
       try {
         const mv = await api.get(`/games/${id}/monthly-vote/me`, {
           withCredentials: true,
@@ -173,11 +188,9 @@ export default function GameDetail() {
         if (!alive) return;
         setVotedThisMonth(mv.data.voted || false);
         setCurrentMonthlyVoteGame(mv.data.gameVoted || null);
-      } catch {
-        // ไม่ล็อกอิน / error เบา ๆ — ข้ามได้
-      }
+      } catch {}
 
-      // ⭐ จำนวนโหวตเกมนี้ในเดือนนี้
+      // vote count
       try {
         const countRes = await api.get(`/games/${id}/monthly-vote-count`);
         if (!alive) return;
@@ -215,10 +228,8 @@ export default function GameDetail() {
     return String(me._id) === String(up);
   }, [me, game]);
 
-  // ⭐ สกรีนช็อตจาก backend
   const screenshots = useMemo(() => game?.screens || [], [game]);
 
-  // ⭐ แปลงลิงก์วิดีโอให้เป็น embed URL
   const videoEmbedUrl = useMemo(() => {
     const raw = (game?.videoUrl || "").trim();
     if (!raw) return "";
@@ -226,26 +237,19 @@ export default function GameDetail() {
     try {
       const url = new URL(raw);
 
-      // YouTube ปกติ
       if (url.hostname.includes("youtube.com")) {
-        const id = url.searchParams.get("v");
-        return id ? `https://www.youtube.com/embed/${id}` : "";
+        const vid = url.searchParams.get("v");
+        return vid ? `https://www.youtube.com/embed/${vid}` : "";
       }
-
-      // youtu.be/xxxx
       if (url.hostname === "youtu.be") {
-        const id = url.pathname.replace("/", "");
-        return id ? `https://www.youtube.com/embed/${id}` : "";
+        const vid = url.pathname.replace("/", "");
+        return vid ? `https://www.youtube.com/embed/${vid}` : "";
       }
-
-      // Vimeo
       if (url.hostname.includes("vimeo.com")) {
         const parts = url.pathname.split("/").filter(Boolean);
-        const id = parts[parts.length - 1];
-        return id ? `https://player.vimeo.com/video/${id}` : "";
+        const vid = parts[parts.length - 1];
+        return vid ? `https://player.vimeo.com/video/${vid}` : "";
       }
-
-      // ถ้าเป็น host อื่น ไม่ embed (กัน iframe แปลก ๆ)
       return "";
     } catch {
       return "";
@@ -266,11 +270,8 @@ export default function GameDetail() {
   const fileSrc = cdn(game.fileUrl || "");
   const coverSrc = cdn(game.coverUrl || "/no-cover.png");
   const authed = !!me?._id;
-  const isFavorited = !!(me?.favorites || []).find(
-    (gid) => String(gid) === String(id)
-  );
-  const uploader =
-    game.uploader && typeof game.uploader === "object" ? game.uploader : null;
+  const isFavorited = !!(me?.favorites || []).find((gid) => String(gid) === String(id));
+  const uploader = game.uploader && typeof game.uploader === "object" ? game.uploader : null;
 
   const onDelete = async () => {
     if (!confirm("ลบเกมนี้ถาวรใช่ไหม?")) return;
@@ -278,10 +279,7 @@ export default function GameDetail() {
     try {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      await api.delete(`/games/${game._id}`, {
-        withCredentials: true,
-        headers,
-      });
+      await api.delete(`/games/${game._id}`, { withCredentials: true, headers });
       nav("/games");
     } catch (e) {
       alert(e?.response?.data?.message || "ลบไม่สำเร็จ");
@@ -290,7 +288,6 @@ export default function GameDetail() {
     }
   };
 
-  // ⭐ ส่งคอมเมนต์ใหม่
   const submitComment = async () => {
     if (!authed) {
       alert("กรุณาเข้าสู่ระบบเพื่อเขียนคอมเมนต์");
@@ -302,11 +299,7 @@ export default function GameDetail() {
       return;
     }
     try {
-      const res = await api.post(
-        `/games/${game._id}/comments`,
-        { content },
-        { withCredentials: true }
-      );
+      const res = await api.post(`/games/${game._id}/comments`, { content }, { withCredentials: true });
       const created = res.data;
       setComments((xs) => [...xs, created]);
       setCommentText("");
@@ -316,25 +309,17 @@ export default function GameDetail() {
     }
   };
 
-  // ⭐ Report comment
   const reportComment = async (comment) => {
     if (!me?._id) {
       alert("ต้องเข้าสู่ระบบก่อนจึงจะรายงานคอมเมนต์ได้");
       return;
     }
 
-    const reason = prompt(
-      "แจ้งเหตุผลในการรายงานคอมเมนต์นี้ (เช่น คำหยาบ, สแปม, ละเมิดนโยบาย ฯลฯ)",
-      ""
-    );
+    const reason = prompt("แจ้งเหตุผลในการรายงานคอมเมนต์นี้ (เช่น คำหยาบ, สแปม, ละเมิดนโยบาย ฯลฯ)", "");
     if (reason === null) return;
 
     try {
-      await api.post(
-        `/comments/${comment._id}/report`,
-        { reason },
-        { withCredentials: true }
-      );
+      await api.post(`/comments/${comment._id}/report`, { reason }, { withCredentials: true });
       alert("ส่งรายงานคอมเมนต์ให้ผู้ดูแลแล้ว ขอบคุณค่ะ/ครับ 🙏");
     } catch (e) {
       console.error(e);
@@ -342,21 +327,14 @@ export default function GameDetail() {
     }
   };
 
-  // ⭐ โหวตเกมประจำเดือน
   const voteMonthly = async () => {
     if (!authed) {
       alert("ต้องเข้าสู่ระบบก่อนจึงจะโหวตเกมประจำเดือนได้");
       return;
     }
 
-    // ถ้าเคยโหวตเกมอื่นในเดือนนี้
-    if (
-      currentMonthlyVoteGame &&
-      String(currentMonthlyVoteGame) !== String(game._id)
-    ) {
-      const ok = confirm(
-        "คุณได้โหวตเกมอื่นในเดือนนี้แล้ว ต้องการเปลี่ยนมาโหวตเกมนี้แทนหรือไม่?"
-      );
+    if (currentMonthlyVoteGame && String(currentMonthlyVoteGame) !== String(game._id)) {
+      const ok = confirm("คุณได้โหวตเกมอื่นในเดือนนี้แล้ว ต้องการเปลี่ยนมาโหวตเกมนี้แทนหรือไม่?");
       if (!ok) return;
     }
 
@@ -364,14 +342,8 @@ export default function GameDetail() {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const res = await api.post(
-        `/games/${game._id}/monthly-vote`,
-        {},
-        { withCredentials: true, headers }
-      );
-
+      const res = await api.post(`/games/${game._id}/monthly-vote`, {}, { withCredentials: true, headers });
       alert("โหวตสำเร็จ! ขอบคุณที่สนับสนุนเกมนี้ ⭐");
-
       setVotedThisMonth(true);
       setCurrentMonthlyVoteGame(game._id);
       setMonthlyVotes(res.data.count ?? 0);
@@ -381,14 +353,12 @@ export default function GameDetail() {
     }
   };
 
-  // ✅ NEW: download click handler
   const onDownloadClick = async (e) => {
     e.preventDefault();
     await trackDownload();
     window.location.href = fileSrc;
   };
 
-  // ✅ NEW: fullscreen play click handler
   const onFullscreenPlay = () => {
     trackPlay();
     window.open(fileSrc, "_blank", "noopener,noreferrer");
@@ -431,7 +401,6 @@ export default function GameDetail() {
       <StyleLocal />
 
       <div className="gd-page">
-        {/* MEDIA */}
         <div className="gd-media">
           <div className="gd-media-inner">
             {playable && !downloadOnly ? (
@@ -452,9 +421,7 @@ export default function GameDetail() {
           </div>
         </div>
 
-        {/* MAIN */}
         <div className="gd-main-only">
-          {/* HEADER */}
           <header className="gd-head">
             <div className="gd-head-left">
               <h1 className="gd-title">{game.title}</h1>
@@ -465,11 +432,7 @@ export default function GameDetail() {
                     by{" "}
                     <Link to="/profile" className="gd-author">
                       <img
-                        src={cdn(
-                          uploader.avatar ||
-                            uploader.avatarUrl ||
-                            "/avatar-default.png"
-                        )}
+                        src={cdn(uploader.avatar || uploader.avatarUrl || "/avatar-default.png")}
                         alt="u"
                         className="gd-author__avatar"
                       />
@@ -479,51 +442,32 @@ export default function GameDetail() {
                 )}
 
                 <span className="gd-meta-dot">•</span>
-
-                <span className="gd-meta-piece">
-                  อัปเดต {prettyDate(game.updatedAt || game.createdAt)}
-                </span>
+                <span className="gd-meta-piece">อัปเดต {prettyDate(game.updatedAt || game.createdAt)}</span>
 
                 <span className="gd-meta-dot">•</span>
-
-                <span className="gd-meta-piece">
-                  การมองเห็น{" "}
-                  {game.visibility === "review" ? "รอตรวจ" : "สาธารณะ"}
-                </span>
+                <span className="gd-meta-piece">การมองเห็น {visibilityLabel(game.visibility)}</span>
               </div>
 
               <div className="gd-tags-row">
-                <span className="gd-badge kind">
-                  {downloadOnly ? "Download" : "HTML / WebGL"}
-                </span>
-                {!!game.category && (
-                  <span className="gd-badge cat">{game.category}</span>
-                )}
-                {(game.tags || [])
-                  .slice(0, 4)
-                  .map((t) => (
-                    <span key={t} className="gd-chip-tag">
-                      #{t}
-                    </span>
-                  ))}
+                <span className="gd-badge kind">{downloadOnly ? "Download" : "HTML / WebGL"}</span>
+                {!!game.category && <span className="gd-badge cat">{game.category}</span>}
+                {(game.tags || []).slice(0, 4).map((t) => (
+                  <span key={t} className="gd-chip-tag">
+                    #{t}
+                  </span>
+                ))}
               </div>
 
-              {/* Monthly votes */}
               <div className="gd-monthly-vote-info">
-                ⭐ Monthly votes:{" "}
-                <span className="gd-monthly-vote-count">
-                  {monthlyVotes || 0}
-                </span>
+                ⭐ Monthly votes: <span className="gd-monthly-vote-count">{monthlyVotes || 0}</span>
               </div>
 
-              {/* ✅ Plays / Downloads: แยกตามประเภทเหมือนหน้า Home */}
               <div className="gd-stats-row">
                 {playable && !downloadOnly ? (
                   <span className="gd-stat">
                     {ICON_PLAY} Plays: <b>{stats.playsCount || 0}</b>
                   </span>
                 ) : null}
-
                 {downloadOnly ? (
                   <span className="gd-stat">
                     {ICON_DOWNLOAD} Downloads: <b>{stats.downloadsCount || 0}</b>
@@ -532,29 +476,20 @@ export default function GameDetail() {
               </div>
             </div>
 
-            {/* ACTION BUTTONS */}
             <div className="gd-head-actions">
               <div className="gd-action-group">
                 <div className="gd-action-item">
-                  <FavoriteButton
-                    gameId={game._id}
-                    authed={authed}
-                    initialFavorited={isFavorited}
-                  />
+                  <FavoriteButton gameId={game._id} authed={authed} initialFavorited={isFavorited} />
                 </div>
 
                 <div className="gd-action-item">
                   <button
                     className={`btn btn-vote ${
-                      votedThisMonth &&
-                      String(currentMonthlyVoteGame) === String(game._id)
-                        ? "voted"
-                        : ""
+                      votedThisMonth && String(currentMonthlyVoteGame) === String(game._id) ? "voted" : ""
                     }`}
                     onClick={voteMonthly}
                   >
-                    {votedThisMonth &&
-                    String(currentMonthlyVoteGame) === String(game._id)
+                    {votedThisMonth && String(currentMonthlyVoteGame) === String(game._id)
                       ? "⭐ Voted this month"
                       : "⭐ Vote this month"}
                   </button>
@@ -562,20 +497,11 @@ export default function GameDetail() {
 
                 <div className="gd-action-item">
                   {downloadOnly ? (
-                    <a
-                      className="btn btn-main"
-                      href={fileSrc}
-                      download
-                      onClick={onDownloadClick}
-                    >
+                    <a className="btn btn-main" href={fileSrc} download onClick={onDownloadClick}>
                       {ICON_DOWNLOAD} ดาวน์โหลดเกม
                     </a>
                   ) : (
-                    <button
-                      type="button"
-                      className="btn btn-main btn-outline-main"
-                      onClick={onFullscreenPlay}
-                    >
+                    <button type="button" className="btn btn-main btn-outline-main" onClick={onFullscreenPlay}>
                       ⛶ เล่นแบบเต็มหน้าจอ
                     </button>
                   )}
@@ -584,19 +510,12 @@ export default function GameDetail() {
                 {isOwner && (
                   <>
                     <div className="gd-action-item">
-                      <Link
-                        className="btn btn-ghost"
-                        to={`/games/${game._id}/edit`}
-                      >
+                      <Link className="btn btn-ghost" to={`/games/${game._id}/edit`}>
                         ✏️ แก้ไข
                       </Link>
                     </div>
                     <div className="gd-action-item">
-                      <button
-                        className="btn btn-danger"
-                        onClick={onDelete}
-                        disabled={busy}
-                      >
+                      <button className="btn btn-danger" onClick={onDelete} disabled={busy}>
                         🗑 ลบเกม
                       </button>
                     </div>
@@ -606,12 +525,9 @@ export default function GameDetail() {
             </div>
           </header>
 
-          {/* DESCRIPTION */}
           <section className="gd-section">
             <h2 className="gd-sec-title">รายละเอียดเกม</h2>
-            <p className="gd-desc">
-              {game.description?.trim() || "ยังไม่มีคำอธิบายเกม"}
-            </p>
+            <p className="gd-desc">{game.description?.trim() || "ยังไม่มีคำอธิบายเกม"}</p>
 
             {!!(game.tags || []).length && (
               <div className="gd-tags-inline">
@@ -624,7 +540,6 @@ export default function GameDetail() {
             )}
           </section>
 
-          {/* VIDEO (ถ้ามี) */}
           {videoEmbedUrl && (
             <section className="gd-section gd-video">
               <h2 className="gd-sec-title">วิดีโอตัวอย่าง</h2>
@@ -639,56 +554,35 @@ export default function GameDetail() {
             </section>
           )}
 
-          {/* SCREENSHOTS (ถ้ามี) */}
           {screenshots.length > 0 && (
             <section className="gd-section gd-screens">
               <h2 className="gd-sec-title">สกรีนช็อต</h2>
               <div className="gd-screens-grid">
                 {screenshots.map((s, i) => (
-                  <button
-                    key={s || i}
-                    type="button"
-                    className="gd-screen"
-                    onClick={() => window.open(cdn(s), "_blank")}
-                  >
-                    <img
-                      src={cdn(s)}
-                      alt={`Screenshot ${i + 1}`}
-                      loading="lazy"
-                    />
+                  <button key={s || i} type="button" className="gd-screen" onClick={() => window.open(cdn(s), "_blank")}>
+                    <img src={cdn(s)} alt={`Screenshot ${i + 1}`} loading="lazy" />
                   </button>
                 ))}
               </div>
             </section>
           )}
 
-          {/* OWNER/ADMIN-ONLY RATING STRIP */}
           {showSummaryStrip && (
             <section className="gd-section gd-rating-strip">
               <div className="gd-rating-card">
                 <div className="gd-rating-header">
-                  <span className="gd-rating-title">
-                    คะแนนจากผู้เล่น (เห็นเฉพาะเรา/ผู้ดูแล)
-                  </span>
-                  <span className="gd-rating-sub">
-                    ใช้ดูภาพรวมดาว / distribution ของเกมเราเอง
-                  </span>
+                  <span className="gd-rating-title">คะแนนจากผู้เล่น (เห็นเฉพาะเรา/ผู้ดูแล)</span>
+                  <span className="gd-rating-sub">ใช้ดูภาพรวมดาว / distribution ของเกมเราเอง</span>
                 </div>
 
                 <div className="gd-rating-top">
                   <div className="gd-summary-score">
-                    <div className="gd-summary-number">
-                      {(summary.avg || 0).toFixed(2)}
-                    </div>
+                    <div className="gd-summary-number">{(summary.avg || 0).toFixed(2)}</div>
                     <div className="gd-summary-stars">
                       {"★".repeat(Math.round(summary.avg || 0))}
-                      <span className="gd-summary-stars-faint">
-                        {"★".repeat(5 - Math.round(summary.avg || 0))}
-                      </span>
+                      <span className="gd-summary-stars-faint">{"★".repeat(5 - Math.round(summary.avg || 0))}</span>
                     </div>
-                    <div className="gd-summary-count">
-                      {summary.count || 0} ratings
-                    </div>
+                    <div className="gd-summary-count">{summary.count || 0} ratings</div>
                   </div>
 
                   <DistBar dist={summary.dist || [0, 0, 0, 0, 0]} />
@@ -697,19 +591,13 @@ export default function GameDetail() {
             </section>
           )}
 
-          {/* COMMENTS */}
           <section className="gd-section gd-comments">
             <div className="gd-comments-head">
               <h2 className="gd-sec-title">
                 Comments{" "}
-                {comments.length ? (
-                  <span className="gd-sec-count">· {comments.length}</span>
-                ) : null}
+                {comments.length ? <span className="gd-sec-count">· {comments.length}</span> : null}
               </h2>
-              <button
-                className="btn btn-small"
-                onClick={() => setOpenRate(true)}
-              >
+              <button className="btn btn-small" onClick={() => setOpenRate(true)}>
                 ให้คะแนน / รีวิว (feedback ลับ)
               </button>
             </div>
@@ -718,72 +606,44 @@ export default function GameDetail() {
               <textarea
                 className="gd-comment-input"
                 rows={3}
-                placeholder={
-                  authed
-                    ? "เขียนคอมเมนต์เกี่ยวกับเกมนี้..."
-                    : "เข้าสู่ระบบเพื่อเขียนคอมเมนต์"
-                }
+                placeholder={authed ? "เขียนคอมเมนต์เกี่ยวกับเกมนี้..." : "เข้าสู่ระบบเพื่อเขียนคอมเมนต์"}
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 disabled={!authed}
               />
               <div className="gd-comment-form-actions">
-                <button
-                  className="btn btn-small"
-                  onClick={submitComment}
-                  disabled={!authed}
-                >
+                <button className="btn btn-small" onClick={submitComment} disabled={!authed}>
                   ส่งคอมเมนต์
                 </button>
               </div>
               <p className="gd-note-small">
-                การให้คะแนน/รีวิวผ่านปุ่มด้านขวาด้านบนจะไม่แสดงต่อสาธารณะ
-                ใช้เป็น feedback ให้เจ้าของเกมและผู้ดูแลเท่านั้น
+                การให้คะแนน/รีวิวผ่านปุ่มด้านขวาด้านบนจะไม่แสดงต่อสาธารณะ ใช้เป็น feedback ให้เจ้าของเกมและผู้ดูแลเท่านั้น
               </p>
             </div>
 
             <div className="gd-comment-list">
-              {comments.length === 0 && (
-                <div className="gd-empty">
-                  ยังไม่มีคอมเมนต์ — ลองเขียนความเห็นแรกดูสิ ✨
-                </div>
-              )}
+              {comments.length === 0 && <div className="gd-empty">ยังไม่มีคอมเมนต์ — ลองเขียนความเห็นแรกดูสิ ✨</div>}
 
               {comments.map((c) => (
                 <article key={c._id} className="gd-comment">
                   <img
                     className="gd-comment-av"
-                    src={cdn(
-                      c.author?.avatar ||
-                        c.author?.avatarUrl ||
-                        "/avatar-default.png"
-                    )}
+                    src={cdn(c.author?.avatar || c.author?.avatarUrl || "/avatar-default.png")}
                     alt=""
                   />
                   <div className="gd-comment-main">
                     <div className="gd-comment-head">
-                      <span className="gd-comment-name">
-                        {c.author?.username || "ผู้ใช้"}
-                      </span>
-                      <span className="gd-comment-time">
-                        {prettyDate(c.createdAt)}
-                      </span>
+                      <span className="gd-comment-name">{c.author?.username || "ผู้ใช้"}</span>
+                      <span className="gd-comment-time">{prettyDate(c.createdAt)}</span>
 
-                      {me?._id &&
-                        String(me._id) !== String(c.author?._id) && (
-                          <button
-                            type="button"
-                            className="gd-report-btn"
-                            onClick={() => reportComment(c)}
-                          >
-                            Report
-                          </button>
-                        )}
+                      {me?._id && String(me._id) !== String(c.author?._id) && (
+                        <button type="button" className="gd-report-btn" onClick={() => reportComment(c)}>
+                          Report
+                        </button>
+                      )}
                     </div>
                     <div className="gd-comment-body">
-                      {c.content?.trim() || (
-                        <span className="gd-comment-muted">(ไม่มีข้อความ)</span>
-                      )}
+                      {c.content?.trim() || <span className="gd-comment-muted">(ไม่มีข้อความ)</span>}
                     </div>
                   </div>
                 </article>
@@ -793,41 +653,28 @@ export default function GameDetail() {
             {(isOwner || isAdmin) && rvTotal > 0 && (
               <div className="gd-reviews-block">
                 <h3 className="gd-sec-title">
-                  Player Reviews (owner / admin only){" "}
-                  <span className="gd-sec-count">· {rvTotal}</span>
+                  Player Reviews (owner / admin only) <span className="gd-sec-count">· {rvTotal}</span>
                 </h3>
                 <div className="gd-comment-list">
                   {reviews.map((r) => (
                     <article key={r._id} className="gd-comment">
                       <img
                         className="gd-comment-av"
-                        src={cdn(
-                          r.user?.avatar ||
-                            r.user?.avatarUrl ||
-                            "/avatar-default.png"
-                        )}
+                        src={cdn(r.user?.avatar || r.user?.avatarUrl || "/avatar-default.png")}
                         alt=""
                       />
                       <div className="gd-comment-main">
                         <div className="gd-comment-head">
-                          <span className="gd-comment-name">
-                            {r.user?.username || "ผู้ใช้"}
-                          </span>
+                          <span className="gd-comment-name">{r.user?.username || "ผู้ใช้"}</span>
                           <span className="gd-comment-stars">
                             {"★".repeat(r.score)}
-                            <span className="gd-comment-stars-faint">
-                              {"★".repeat(5 - r.score)}
-                            </span>
+                            <span className="gd-comment-stars-faint">{"★".repeat(5 - r.score)}</span>
                           </span>
-                          <span className="gd-comment-time">
-                            {prettyDate(r.createdAt)}
-                          </span>
+                          <span className="gd-comment-time">{prettyDate(r.createdAt)}</span>
                         </div>
                         <div className="gd-comment-body">
                           {r.text?.trim() || (
-                            <span className="gd-comment-muted">
-                              (ไม่มีข้อความ แสดงความคิดเห็นด้วยดาวอย่างเดียว)
-                            </span>
+                            <span className="gd-comment-muted">(ไม่มีข้อความ แสดงความคิดเห็นด้วยดาวอย่างเดียว)</span>
                           )}
                         </div>
                       </div>
@@ -845,12 +692,7 @@ export default function GameDetail() {
         open={openRate}
         onClose={() => setOpenRate(false)}
         authed={authed}
-        onUpdated={(sum) =>
-          setSummary((s) => ({
-            ...s,
-            ...sum,
-          }))
-        }
+        onUpdated={(sum) => setSummary((s) => ({ ...s, ...sum }))}
       />
     </div>
   );

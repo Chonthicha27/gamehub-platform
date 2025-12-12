@@ -19,9 +19,7 @@ function GameCardMini({ game, onClick }) {
       <div
         className="pfx-game__cover"
         style={{
-          backgroundImage: `url(${cdn(
-            game.coverUrl || "/no-cover.png"
-          )})`,
+          backgroundImage: `url(${cdn(game.coverUrl || "/no-cover.png")})`,
         }}
       />
       <div className="pfx-game__meta">
@@ -41,26 +39,32 @@ export default function Profile() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // load me + all games then filter mine (backend ยังไม่มี query uploader)
+  // ✅ load me + my games (ใช้ backend: /api/games?mine=1)
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
+
         const { data: meData } = await api.get("/users/me");
         if (!alive) return;
         setMe(meData);
 
-        const { data: list } = await api.get("/games", { params: { all: 1 } });
+        const token = localStorage.getItem("token");
+        const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const { data: list } = await api.get("/games", {
+          params: { mine: 1 },
+          withCredentials: true,
+          headers: { ...authHeader },
+        });
         if (!alive) return;
 
-        const mine = (list || []).filter(
-          (g) =>
-            String(g?.uploader?._id || "") === String(meData?._id || "")
-        );
-        setGames(mine);
+        setGames(Array.isArray(list) ? list : []);
       } catch (e) {
         console.error("Profile load failed", e);
+        if (!alive) return;
+        setGames([]);
       } finally {
         if (alive) setLoading(false);
       }
@@ -88,13 +92,10 @@ export default function Profile() {
     <div className="pfx-page">
       <style>{CSS}</style>
 
-      {/* ===== BANNER / HERO ===== */}
       <section
         className="pfx-banner"
         style={{
-          backgroundImage: `url(${cdn(
-            me?.bannerUrl || "/profile-banner-fallback.jpg"
-          )})`,
+          backgroundImage: `url(${cdn(me?.bannerUrl || "/profile-banner-fallback.jpg")})`,
         }}
       >
         <div className="pfx-banner__overlay" />
@@ -109,49 +110,29 @@ export default function Profile() {
                 />
               </div>
               <div className="pfx-id">
-                <h1 className="pfx-name">
-                  {me?.displayName || me?.username || "—"}
-                </h1>
+                <h1 className="pfx-name">{me?.displayName || me?.username || "—"}</h1>
                 <div className="pfx-handle">@{me?.username || "unknown"}</div>
-                <div className="pfx-tagline">
-                  Indie game creator on GPX
-                </div>
+                <div className="pfx-tagline">Indie game creator on GPX</div>
 
                 {!!me?.links && (
                   <div className="pfx-links">
                     {me.links.website && (
-                      <a
-                        href={me.links.website}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a href={me.links.website} target="_blank" rel="noreferrer">
                         Website
                       </a>
                     )}
                     {me.links.github && (
-                      <a
-                        href={`https://github.com/${me.links.github}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a href={`https://github.com/${me.links.github}`} target="_blank" rel="noreferrer">
                         GitHub
                       </a>
                     )}
                     {me.links.twitter && (
-                      <a
-                        href={`https://x.com/${me.links.twitter}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a href={`https://x.com/${me.links.twitter}`} target="_blank" rel="noreferrer">
                         X / Twitter
                       </a>
                     )}
                     {me.links.youtube && (
-                      <a
-                        href={me.links.youtube}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a href={me.links.youtube} target="_blank" rel="noreferrer">
                         YouTube
                       </a>
                     )}
@@ -161,16 +142,10 @@ export default function Profile() {
             </div>
 
             <div className="pfx-actions">
-              <button
-                className="pfx-chip"
-                onClick={() => nav("/settings/profile")}
-              >
+              <button className="pfx-chip" onClick={() => nav("/settings/profile")}>
                 Edit profile
               </button>
-              <button
-                className="pfx-chip pfx-chip--primary"
-                onClick={() => nav("/upload")}
-              >
+              <button className="pfx-chip pfx-chip--primary" onClick={() => nav("/upload")}>
                 Upload game
               </button>
             </div>
@@ -185,17 +160,13 @@ export default function Profile() {
         </div>
       </section>
 
-      {/* ===== BODY ===== */}
       <section className="container pfx-layout">
-        {/* LEFT: MY GAMES ================================================= */}
         <main className="pfx-main">
           <header className="pfx-section-head">
             <div>
               <h2 className="pfx-sec">My Games</h2>
               <p className="pfx-section-sub">
-                {stats.games > 0
-                  ? `${stats.games} game${stats.games > 1 ? "s" : ""} uploaded`
-                  : "ยังไม่มีเกมที่อัปโหลด"}
+                {stats.games > 0 ? `${stats.games} game${stats.games > 1 ? "s" : ""} uploaded` : "ยังไม่มีเกมที่อัปโหลด"}
               </p>
             </div>
           </header>
@@ -213,34 +184,22 @@ export default function Profile() {
           ) : games.length ? (
             <div className="pfx-grid">
               {games.map((g) => (
-                <GameCardMini
-                  key={g._id}
-                  game={g}
-                  onClick={() => nav(`/games/${g._id}`)}
-                />
+                <GameCardMini key={g._id} game={g} onClick={() => nav(`/games/${g._id}`)} />
               ))}
             </div>
           ) : (
             <div className="pfx-empty">
               <div>
-                <div className="pfx-empty__title">
-                  ยังไม่มีเกมของคุณใน GPX
-                </div>
-                <p className="pfx-empty__text">
-                  เริ่มอัปโหลดเกมแรกของคุณแล้วให้เพื่อน ๆ มาลองเล่นกัน!
-                </p>
+                <div className="pfx-empty__title">ยังไม่มีเกมของคุณใน GPX</div>
+                <p className="pfx-empty__text">เริ่มอัปโหลดเกมแรกของคุณแล้วให้เพื่อน ๆ มาลองเล่นกัน!</p>
               </div>
-              <button
-                className="pfx-chip pfx-chip--primary"
-                onClick={() => nav("/upload")}
-              >
+              <button className="pfx-chip pfx-chip--primary" onClick={() => nav("/upload")}>
                 อัปโหลดเกมแรกของฉัน
               </button>
             </div>
           )}
         </main>
 
-        {/* RIGHT: SIDE INFO =============================================== */}
         <aside className="pfx-side">
           <div className="pfx-sidecard">
             <h3 className="pfx-side-title">About me</h3>
@@ -253,53 +212,35 @@ export default function Profile() {
               <ul className="pfx-links-list">
                 {me.links.website && (
                   <li>
-                    <a
-                      href={me.links.website}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={me.links.website} target="_blank" rel="noreferrer">
                       Website
                     </a>
                   </li>
                 )}
                 {me.links.github && (
                   <li>
-                    <a
-                      href={`https://github.com/${me.links.github}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={`https://github.com/${me.links.github}`} target="_blank" rel="noreferrer">
                       GitHub
                     </a>
                   </li>
                 )}
                 {me.links.twitter && (
                   <li>
-                    <a
-                      href={`https://x.com/${me.links.twitter}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={`https://x.com/${me.links.twitter}`} target="_blank" rel="noreferrer">
                       X / Twitter
                     </a>
                   </li>
                 )}
                 {me.links.youtube && (
                   <li>
-                    <a
-                      href={me.links.youtube}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={me.links.youtube} target="_blank" rel="noreferrer">
                       YouTube
                     </a>
                   </li>
                 )}
               </ul>
             ) : (
-              <p className="pfx-side-text pfx-side-text--muted">
-                ยังไม่ได้เพิ่มลิงก์ ลองไปเพิ่มในหน้า Edit profile
-              </p>
+              <p className="pfx-side-text pfx-side-text--muted">ยังไม่ได้เพิ่มลิงก์ ลองไปเพิ่มในหน้า Edit profile</p>
             )}
           </div>
 
@@ -325,6 +266,7 @@ export default function Profile() {
     </div>
   );
 }
+
 
 const CSS = `
 .pfx-page{

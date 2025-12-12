@@ -84,13 +84,21 @@ export default function UploadGame() {
   const [screenPreviews, setScreenPreviews] = useState([]);
 
   // media เพิ่มเติม
-  const [trailerUrl, setTrailerUrl] = useState(""); // ลิงก์วิดีโอ (เช่น YouTube)
-  const [extraImages, setExtraImages] = useState([]); // รูปภาพเพิ่มเติม
-  const [extraPreviews, setExtraPreviews] = useState([]); // พรีวิวรูปเพิ่มเติม
+  const [trailerUrl, setTrailerUrl] = useState("");
+  const [extraImages, setExtraImages] = useState([]);
+  const [extraPreviews, setExtraPreviews] = useState([]);
 
   // options
   const [communityMode, setCommunityMode] = useState("comments"); // off | comments
-  const [visibility, setVisibility] = useState("public"); // review | public
+
+  /**
+   * ✅ visibility ให้ตรง backend:
+   * - public   = ออนไลน์ (ต้องให้แอดมินปล่อย “ในระบบคุณจะถูกเก็บเป็น review จนกว่าจะอนุมัติ”)
+   * - review   = รอตรวจ (ไม่ขึ้นหน้า home/search)
+   * - unlisted = มีลิงก์ถึงเข้าได้ (ไม่ขึ้นหน้า home/search)
+   * - private  = เห็นเฉพาะเจ้าของ/แอดมิน
+   */
+  const [visibility, setVisibility] = useState("review"); // ✅ default ปลอดภัย: ไม่หลุด public
 
   // Kind of project
   const [kind, setKind] = useState("html"); // 'html' | 'download'
@@ -176,7 +184,7 @@ export default function UploadGame() {
     setMsg("");
     setKind("html");
     setCommunityMode("comments");
-    setVisibility("public");
+    setVisibility("review"); // ✅ reset กลับเป็น review
   };
 
   /** จัดการเปลี่ยนรูปหน้าปก + ย่อก่อนอัปโหลด */
@@ -199,7 +207,7 @@ export default function UploadGame() {
 
   /** รูปภาพเพิ่มเติม (เช่น art, UI, poster ฯลฯ) */
   const onExtrasChange = async (e) => {
-    const files = Array.from(e.target.files || []).slice(0, 10); // สูงสุด 10 รูป
+    const files = Array.from(e.target.files || []).slice(0, 10);
     const resized = [];
     for (const f of files) {
       resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
@@ -236,7 +244,7 @@ export default function UploadGame() {
       fd.append("tagline", tagline);
       fd.append("description", description);
       fd.append("category", category);
-      fd.append("visibility", visibility);
+      fd.append("visibility", visibility); // ✅ ส่งค่าให้ backend
       fd.append("kind", kind);
 
       tags.forEach((t) => fd.append("tags[]", t));
@@ -244,10 +252,8 @@ export default function UploadGame() {
       fd.append("file", gameFile);
       screens.forEach((f) => fd.append("screens[]", f));
 
-      // วิดีโอ & รูปเพิ่มเติม
-      if (trailerUrl.trim()) {
-        fd.append("trailerUrl", trailerUrl.trim());
-      }
+      // วิดีโอ & รูปเพิ่มเติม (backend ยังไม่ได้เก็บก็ไม่พัง แค่ไม่ถูกใช้)
+      if (trailerUrl.trim()) fd.append("trailerUrl", trailerUrl.trim());
       extraImages.forEach((f) => fd.append("extras[]", f));
 
       const token = localStorage.getItem("token");
@@ -257,8 +263,7 @@ export default function UploadGame() {
         withCredentials: true,
         headers: { ...authHeader },
         onUploadProgress: (ev) => {
-          if (ev.total)
-            setProgress(Math.round((ev.loaded * 100) / ev.total));
+          if (ev.total) setProgress(Math.round((ev.loaded * 100) / ev.total));
         },
       });
 
@@ -267,25 +272,18 @@ export default function UploadGame() {
       console.log("Created:", res.data);
     } catch (err) {
       const code = err?.response?.status;
-      if (code === 401)
-        setMsg(
-          "ยังไม่ได้ล็อกอิน (Unauthorized) — กรุณาเข้าสู่ระบบก่อนอัปโหลด"
-        );
-      else
-        setMsg(
-          err?.response?.data?.message ||
-            err.message ||
-            "อัปโหลดล้มเหลว"
-        );
+      if (code === 401) {
+        setMsg("ยังไม่ได้ล็อกอิน (Unauthorized) — กรุณาเข้าสู่ระบบก่อนอัปโหลด");
+      } else {
+        setMsg(err?.response?.data?.message || err.message || "อัปโหลดล้มเหลว");
+      }
     } finally {
       setBusy(false);
       setTimeout(() => setProgress(0), 800);
     }
   };
 
-  const currentCat =
-    CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
-
+  const currentCat = CATEGORIES.find((c) => c.id === category) || CATEGORIES[0];
   const isSuccess = msg.startsWith("อัปโหลดสำเร็จ");
 
   return (
@@ -297,8 +295,8 @@ export default function UploadGame() {
           <div>
             <h1 className="tx-gradient up-title">Upload your game</h1>
             <p className="up-sub">
-              อัปโหลดเกมให้ดูดีตั้งแต่แรกเห็น — ใส่หน้าปก
-              สกรีนช็อต วิดีโอ แท็ก และรายละเอียดแบบครบ ๆ
+              อัปโหลดเกมให้ดูดีตั้งแต่แรกเห็น — ใส่หน้าปก สกรีนช็อต วิดีโอ แท็ก
+              และรายละเอียดแบบครบ ๆ
             </p>
           </div>
           <div className="up-hints">
@@ -367,11 +365,7 @@ export default function UploadGame() {
                   }
                 }}
               />
-              <button
-                type="button"
-                className="btn-tag-add"
-                onClick={addTag}
-              >
+              <button type="button" className="btn-tag-add" onClick={addTag}>
                 เพิ่มแท็ก
               </button>
             </div>
@@ -402,42 +396,26 @@ export default function UploadGame() {
                     onClick={() => setCatOpen((v) => !v)}
                     style={{ borderColor: currentCat.color }}
                   >
-                    <span
-                      className="cat-dot"
-                      style={{ background: currentCat.color }}
-                    />
+                    <span className="cat-dot" style={{ background: currentCat.color }} />
                     <span className="cat-emoji">{currentCat.emoji}</span>
                     <span className="cat-name">{currentCat.name}</span>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      className={catOpen ? "rot" : ""}
-                    >
+                    <svg width="14" height="14" viewBox="0 0 24 24" className={catOpen ? "rot" : ""}>
                       <path fill="currentColor" d="M7 10l5 5 5-5H7z" />
                     </svg>
                   </button>
 
                   {catOpen && (
-                    <div
-                      className="cat-menu"
-                      onMouseLeave={() => setCatOpen(false)}
-                    >
+                    <div className="cat-menu" onMouseLeave={() => setCatOpen(false)}>
                       {CATEGORIES.map((c) => (
                         <div
                           key={c.id}
-                          className={`cat-item ${
-                            c.id === category ? "is-active" : ""
-                          }`}
+                          className={`cat-item ${c.id === category ? "is-active" : ""}`}
                           onClick={() => {
                             setCategory(c.id);
                             setCatOpen(false);
                           }}
                         >
-                          <span
-                            className="cat-dot"
-                            style={{ background: c.color }}
-                          />
+                          <span className="cat-dot" style={{ background: c.color }} />
                           <span className="cat-emoji">{c.emoji}</span>
                           <span className="cat-name">{c.name}</span>
                         </div>
@@ -450,11 +428,7 @@ export default function UploadGame() {
               <div className="col">
                 <label className="up-label">ชุมชน</label>
                 <div className="pill-row">
-                  <label
-                    className={`pill ${
-                      communityMode === "off" ? "is-on" : ""
-                    }`}
-                  >
+                  <label className={`pill ${communityMode === "off" ? "is-on" : ""}`}>
                     <input
                       type="radio"
                       name="community"
@@ -464,11 +438,7 @@ export default function UploadGame() {
                     />
                     ปิดการมีส่วนร่วม
                   </label>
-                  <label
-                    className={`pill ${
-                      communityMode === "comments" ? "is-on" : ""
-                    }`}
-                  >
+                  <label className={`pill ${communityMode === "comments" ? "is-on" : ""}`}>
                     <input
                       type="radio"
                       name="community"
@@ -482,39 +452,45 @@ export default function UploadGame() {
               </div>
             </div>
 
-            {/* การมองเห็น: สาธารณะ / ส่วนตัว */}
+            {/* ✅ Visibility ที่ตรง backend */}
             <div className="up-row">
               <div className="col">
                 <label className="up-label">การมองเห็น</label>
                 <div className="vis-row">
                   <button
                     type="button"
-                    className={
-                      visibility === "public"
-                        ? "vis-pill vis-pill--active"
-                        : "vis-pill"
-                    }
+                    className={visibility === "public" ? "vis-pill vis-pill--active" : "vis-pill"}
                     onClick={() => setVisibility("public")}
                   >
-                    <span>🌐 สาธารณะ</span>
-                    <span className="vis-sub">
-                      ทุกคนค้นหาและเข้าเล่นได้
-                    </span>
+                    <span>🌐 ส่งขึ้นระบบ (รอตรวจ)</span>
+                    <span className="vis-sub">ยังไม่ขึ้นหน้า Home/Search จนกว่าจะอนุมัติ</span>
                   </button>
 
                   <button
                     type="button"
-                    className={
-                      visibility === "review"
-                        ? "vis-pill vis-pill--active"
-                        : "vis-pill"
-                    }
+                    className={visibility === "unlisted" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    onClick={() => setVisibility("unlisted")}
+                  >
+                    <span>🔗 Unlisted</span>
+                    <span className="vis-sub">ไม่ขึ้น Home/Search แต่คนมีลิงก์เข้าได้</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={visibility === "private" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    onClick={() => setVisibility("private")}
+                  >
+                    <span>🔒 Private</span>
+                    <span className="vis-sub">เห็นเฉพาะคุณ/แอดมิน</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={visibility === "review" ? "vis-pill vis-pill--active" : "vis-pill"}
                     onClick={() => setVisibility("review")}
                   >
-                    <span>🔒 ส่วนตัว</span>
-                    <span className="vis-sub">
-                      ใช้ทดสอบ / มีลิงก์เท่านั้นที่เข้าเล่นได้
-                    </span>
+                    <span>🕵️ Draft / Test</span>
+                    <span className="vis-sub">เก็บไว้ทดสอบ (ไม่หลุด public)</span>
                   </button>
                 </div>
               </div>
@@ -522,18 +498,9 @@ export default function UploadGame() {
 
             {/* Kind of project */}
             <label className="up-label">Kind of project</label>
-            <select
-              className="up-input"
-              value={kind}
-              onChange={(e) => setKind(e.target.value)}
-            >
-              <option value="download">
-                Downloadable — You only have files to be downloaded (.rar)
-              </option>
-              <option value="html">
-                HTML — You have a ZIP or HTML file that will be played in the
-                browser
-              </option>
+            <select className="up-input" value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="download">Downloadable — You only have files to be downloaded (.rar)</option>
+              <option value="html">HTML — You have a ZIP or HTML file that will be played in the browser</option>
             </select>
           </section>
 
@@ -543,24 +510,18 @@ export default function UploadGame() {
 
             <div className="up-field">
               <label className="up-label">
-                {kind === "html"
-                  ? "ไฟล์เกมหลัก (.html / .zip)"
-                  : "ไฟล์เกมหลัก (.rar)"}
+                {kind === "html" ? "ไฟล์เกมหลัก (.html / .zip)" : "ไฟล์เกมหลัก (.rar)"}
               </label>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept={acceptForKind}
-                onChange={(e) =>
-                  setGameFile(e.target.files?.[0] || null)
-                }
+                onChange={(e) => setGameFile(e.target.files?.[0] || null)}
               />
               {gameFile && (
                 <div className="file-name tiny">
                   📁 {gameFile.name}{" "}
-                  <span className="muted">
-                    ({(gameFile.size / 1024 / 1024).toFixed(1)} MB)
-                  </span>
+                  <span className="muted">({(gameFile.size / 1024 / 1024).toFixed(1)} MB)</span>
                 </div>
               )}
               <div className="muted tiny">
@@ -571,9 +532,7 @@ export default function UploadGame() {
             </div>
 
             <div className="up-field">
-              <label className="up-label">
-                ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)
-              </label>
+              <label className="up-label">ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)</label>
               <input
                 ref={coverInputRef}
                 type="file"
@@ -581,18 +540,12 @@ export default function UploadGame() {
                 onChange={onCoverChange}
               />
               <div className="cover-frame">
-                {coverPreview ? (
-                  <img src={coverPreview} alt="cover" />
-                ) : (
-                  <div className="empty">ยังไม่มีภาพหน้าปก</div>
-                )}
+                {coverPreview ? <img src={coverPreview} alt="cover" /> : <div className="empty">ยังไม่มีภาพหน้าปก</div>}
               </div>
             </div>
 
             <div className="up-field">
-              <label className="up-label">
-                สกรีนช็อต (สูงสุด 5 รูป)
-              </label>
+              <label className="up-label">สกรีนช็อต (สูงสุด 5 รูป)</label>
               <input
                 ref={screensInputRef}
                 type="file"
@@ -611,11 +564,8 @@ export default function UploadGame() {
               )}
             </div>
 
-            {/* วิดีโอตัวอย่าง */}
             <div className="up-field">
-              <label className="up-label">
-                วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)
-              </label>
+              <label className="up-label">วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)</label>
               <input
                 className="up-input"
                 type="url"
@@ -624,16 +574,12 @@ export default function UploadGame() {
                 onChange={(e) => setTrailerUrl(e.target.value)}
               />
               <div className="muted tiny">
-                ใช้ลิงก์ฝังจากแพลตฟอร์มวิดีโอ แนะนำ YouTube
-                (จะไปใช้แสดงในหน้าเกมภายหลัง)
+                ใช้ลิงก์ฝังจากแพลตฟอร์มวิดีโอ แนะนำ YouTube (จะไปใช้แสดงในหน้าเกมภายหลัง)
               </div>
             </div>
 
-            {/* รูปภาพเพิ่มเติม */}
             <div className="up-field">
-              <label className="up-label">
-                รูปภาพเพิ่มเติม (เช่น Poster / UI / Art, สูงสุด 10 รูป)
-              </label>
+              <label className="up-label">รูปภาพเพิ่มเติม (เช่น Poster / UI / Art, สูงสุด 10 รูป)</label>
               <input
                 ref={extrasInputRef}
                 type="file"
@@ -654,16 +600,12 @@ export default function UploadGame() {
 
             {progress > 0 && (
               <div className="progress">
-                <div
-                  className="bar"
-                  style={{ width: `${progress}%` }}
-                />
+                <div className="bar" style={{ width: `${progress}%` }} />
               </div>
             )}
 
             {msg && <div className="alert">{msg}</div>}
 
-            {/* ปุ่มฉลาดๆ ด้านล่าง */}
             <div className="btn-row">
               <div className="btn-row__left">
                 <span className="muted tiny">
@@ -673,28 +615,18 @@ export default function UploadGame() {
                 </span>
               </div>
               <div className="btn-row__right">
-                <button
-                  className="btn btn-ghost"
-                  type="button"
-                  onClick={resetForm}
-                  disabled={busy}
-                >
+                <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={busy}>
                   ล้างฟอร์ม
                 </button>
                 <button
-                  className={`btn btn-primary ${
-                    !busy && isSuccess ? "btn-primary--success" : ""
-                  }`}
+                  className={`btn btn-primary ${!busy && isSuccess ? "btn-primary--success" : ""}`}
                   type="submit"
                   disabled={busy}
                 >
                   {busy ? (
                     <>
                       <span className="btn-spinner" />
-                      <span>
-                        กำลังอัปโหลด…
-                        {progress > 0 ? ` ${progress}%` : ""}
-                      </span>
+                      <span>กำลังอัปโหลด…{progress > 0 ? ` ${progress}%` : ""}</span>
                     </>
                   ) : isSuccess ? (
                     <>

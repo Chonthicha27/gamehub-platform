@@ -51,23 +51,28 @@ const GameSchema = new mongoose.Schema(
       required: true,
     },
 
-    // visibility:
-    // - review = รออนุมัติ
-    // - public = ออนไลน์ (ขึ้นหน้า home/search)
-    // - unlisted = ไม่ขึ้นหน้า home/search แต่คนมีลิ้งเข้าได้
-    // - private = เห็นเฉพาะเจ้าของ/แอดมิน
-    // - suspended = ระงับเพราะละเมิดนโยบาย
+    /**
+     * visibility:
+     * - public   = สาธารณะ (ขึ้น home/search และทุกคนเข้าได้)
+     * - unlisted = ไม่ขึ้น home/search แต่คนมีลิงก์เข้าได้
+     * - private  = เห็นเฉพาะเจ้าของ/แอดมิน (คนอื่น 404)
+     * - suspended= ระงับเพราะละเมิดนโยบาย (เข้าถึงแบบจำกัด)
+     *
+     * ✅ NOTE:
+     * - ตัดแนวคิด "review" (รอแอดมินอนุมัติ) ออกในเชิงการใช้งาน
+     *   เพราะ requirement คือ private ไม่ต้องรอ และ public ก็ไม่ต้องรอเช่นกัน
+     */
     visibility: {
       type: String,
-      enum: ["review", "public", "unlisted", "private", "suspended"],
-      default: "review",
+      enum: ["public", "unlisted", "private", "suspended"],
+      default: "public",
     },
 
     // ข้อมูลการระงับเกม (ถ้ามี)
     suspendedReason: { type: String, default: "" },
     suspendedAt: { type: Date },
 
-    // ===== Stats (NEW) =====
+    // ===== Stats =====
     playsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดเล่น (Play)
     downloadsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดดาวน์โหลด (Download)
     lastPlayedAt: { type: Date }, // เวลาที่มีการเล่นล่าสุด

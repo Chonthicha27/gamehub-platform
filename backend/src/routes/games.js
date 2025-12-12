@@ -92,10 +92,7 @@ initFirebaseBucket();
 function authRequired(req, res, next) {
   // 1) กรณี login ด้วย session/passport (เช่น GitHub OAuth)
   if (req.isAuthenticated && req.isAuthenticated()) {
-    if (req.user?._id) {
-      return next();
-    }
-    // บางที passport เซ็ตเป็น id เฉย ๆ
+    if (req.user?._id) return next();
     if (req.user?.id) {
       req.user._id = String(req.user.id);
       return next();
@@ -110,7 +107,7 @@ function authRequired(req, res, next) {
         h.slice(7),
         process.env.JWT_SECRET || "devsecret"
       );
-      req.user = { _id: String(payload.id || payload.uid) };
+      req.user = { _id: String(payload.id || payload.uid), role: payload.role };
       return next();
     } catch {}
   }
@@ -136,7 +133,7 @@ function readOptionalUser(req, _res, next) {
         h.slice(7),
         process.env.JWT_SECRET || "devsecret"
       );
-      req.user = { _id: String(payload.id || payload.uid) };
+      req.user = { _id: String(payload.id || payload.uid), role: payload.role };
     } catch {}
   }
   next();
@@ -195,20 +192,6 @@ async function safeUnlink(p) {
   } catch {}
 }
 
-// เคยใช้ลบสกรีนช็อตใน local folder
-async function safeRmDir(dir) {
-  try {
-    const items = await fsp.readdir(dir);
-    await Promise.all(
-      items.map((name) => {
-        const p = path.join(dir, name);
-        if (/^screen-\d+\.(png|jpe?g|webp)$/i.test(name)) return safeUnlink(p);
-        return null;
-      })
-    );
-  } catch {}
-}
-
 // ลบโฟลเดอร์ local ทั้งก้อน
 async function rmrf(dir) {
   try {
@@ -248,7 +231,6 @@ function buildFirebaseMetadata(localPath, explicitContentType) {
   let contentType = explicitContentType || guessContentType(localPath);
   let contentEncoding;
 
-  // Unity WebGL ที่บีบอัดด้วย Brotli
   if (fileName.endsWith(".js.br")) {
     contentType = "application/javascript";
     contentEncoding = "br";
@@ -258,9 +240,7 @@ function buildFirebaseMetadata(localPath, explicitContentType) {
   } else if (fileName.endsWith(".data.br")) {
     contentType = "application/octet-stream";
     contentEncoding = "br";
-  }
-  // Unity WebGL ที่บีบอัดด้วย gzip
-  else if (fileName.endsWith(".js.gz")) {
+  } else if (fileName.endsWith(".js.gz")) {
     contentType = "application/javascript";
     contentEncoding = "gzip";
   } else if (fileName.endsWith(".wasm.gz")) {
@@ -269,9 +249,7 @@ function buildFirebaseMetadata(localPath, explicitContentType) {
   } else if (fileName.endsWith(".data.gz")) {
     contentType = "application/octet-stream";
     contentEncoding = "gzip";
-  }
-  // generic .br / .gz อื่น ๆ
-  else if (fileName.endsWith(".br")) {
+  } else if (fileName.endsWith(".br")) {
     contentEncoding = "br";
   } else if (fileName.endsWith(".gz")) {
     contentEncoding = "gzip";
@@ -382,7 +360,44 @@ function getCurrentMonthKey() {
   return now.toISOString().slice(0, 7); // "2025-11"
 }
 
-/* ===== Stats (NEW) =====
+/* ===== Access Control (NEW) ===== */
+
+function isAdminUser(req) {
+  // ถ้า session มี role หรือ token มี role
+  return String(req.user?.role || "").toLowerCase() === "admin";
+}
+
+/**
+ * โหลดเกม + เช็คสิทธิ์:
+ * - public: ใครก็อ่านได้
+ * - unlisted: ใครก็อ่านได้ (แต่ไม่ขึ้น list/search)
+ * - private: owner/admin เท่านั้น (คนอื่น 404)
+ * - suspended: owner/admin เท่านั้น (คนอื่น 404)  (กันหลุด)
+ */
+async function loadGameForRead(req, gameId) {
+  const g = await Game.findById(gameId).populate("uploader", "username avatarUrl role");
+  if (!g) return { game: null, allowed: false };
+
+  const meId = req.user?._id ? String(req.user._id) : null;
+  const ownerId = g.uploader?._id ? String(g.uploader._id) : String(g.uploader);
+  const isOwner = !!meId && meId === ownerId;
+  const admin = isAdminUser(req);
+
+  const vis = g.visibility;
+
+  if (vis === "public" || vis === "unlisted") {
+    return { game: g, allowed: true, isOwner, isAdmin: admin };
+  }
+
+  // private / suspended
+  if (isOwner || admin) {
+    return { game: g, allowed: true, isOwner, isAdmin: admin };
+  }
+
+  return { game: g, allowed: false, isOwner, isAdmin: admin };
+}
+
+/* ===== Stats =====
    simple in-memory rate limit ต่อ IP กันยิงสแปมแบบเบา ๆ
 */
 const _hit = new Map(); // key -> { t, c }
@@ -410,10 +425,13 @@ function getClientIp(req) {
 
 /**
  * POST /api/games/:id/track-play
- * นับ “เล่นเกม” 1 ครั้ง (แนะนำให้ frontend ยิงตอนกดปุ่ม Play หรือเปิดหน้าเล่น)
+ * ✅ ป้องกัน private: คนอื่นยิงไม่ได้ (404)
  */
-router.post("/:id/track-play", async (req, res) => {
+router.post("/:id/track-play", readOptionalUser, async (req, res) => {
   try {
+    const { game, allowed } = await loadGameForRead(req, req.params.id);
+    if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
     const ip = getClientIp(req);
     const key = `play:${req.params.id}:${ip}`;
     if (tooMany(key, 20, 60_000)) {
@@ -441,10 +459,13 @@ router.post("/:id/track-play", async (req, res) => {
 
 /**
  * POST /api/games/:id/track-download
- * นับ “ดาวน์โหลด” 1 ครั้ง (แนะนำให้ frontend ยิงก่อนเริ่มดาวน์โหลดจริง)
+ * ✅ ป้องกัน private: คนอื่นยิงไม่ได้ (404)
  */
-router.post("/:id/track-download", async (req, res) => {
+router.post("/:id/track-download", readOptionalUser, async (req, res) => {
   try {
+    const { game, allowed } = await loadGameForRead(req, req.params.id);
+    if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
     const ip = getClientIp(req);
     const key = `dl:${req.params.id}:${ip}`;
     if (tooMany(key, 20, 60_000)) {
@@ -472,10 +493,13 @@ router.post("/:id/track-download", async (req, res) => {
 
 /**
  * GET /api/games/:id/stats
- * ดึงสถิติไปโชว์หน้าเกม
+ * ✅ ป้องกัน private: คนอื่นอ่านไม่ได้
  */
-router.get("/:id/stats", async (req, res) => {
+router.get("/:id/stats", readOptionalUser, async (req, res) => {
   try {
+    const { game, allowed } = await loadGameForRead(req, req.params.id);
+    if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
     const g = await Game.findById(req.params.id)
       .select("playsCount downloadsCount lastPlayedAt lastDownloadedAt")
       .lean();
@@ -521,18 +545,18 @@ router.post(
       const kind = b.kind === "download" ? "download" : "html";
       const tagline = b.tagline || "";
       const description = b.description || "";
-      const category = b.category || "all";
 
-      // ✅ FIX: รับ visibility จาก owner เฉพาะ private/unlisted
-      // - ถ้าเลือก public → ยังเข้า review เหมือนเดิม (รอแอดมินปล่อย)
-      // - ถ้าเลือก private/unlisted → เก็บตามนั้น (ไม่ขึ้น home/search)
+      // ✅ FIX: ให้ default category ตรงกับ schema
+      const category = b.category || "no-genre";
+
+      // ✅ FIX: รับ visibility ตามที่ user เลือกจริง ๆ (ไม่ต้อง review/admin)
       const visIn = String(b.visibility || "").trim();
       const visibility =
         visIn === "private"
           ? "private"
           : visIn === "unlisted"
           ? "unlisted"
-          : "review";
+          : "public";
 
       const tags = Array.isArray(b["tags[]"])
         ? b["tags[]"]
@@ -544,7 +568,7 @@ router.post(
       if (!file) return res.status(400).json({ message: "กรุณาแนบไฟล์เกม" });
 
       const gameId = `${slug}-${uuid().slice(0, 8)}`;
-      const gameDir = path.join(uploadsRoot, "games", gameId); // ใช้กรณี local
+      const gameDir = path.join(uploadsRoot, "games", gameId); // local
       const keyPrefix = `${FIREBASE_KEY_PREFIX}/${gameId}`;
 
       if (!useFirebase) {
@@ -673,7 +697,7 @@ router.post(
         tagline,
         description,
         category,
-        visibility, // ✅ FIX: ใช้ค่าที่คำนวณด้านบน
+        visibility, // ✅ FIX
         tags,
         fileUrl,
         coverUrl,
@@ -686,7 +710,9 @@ router.post(
     } catch (err) {
       console.error("[games.create]", err);
       if (err?.code === 11000)
-        return res.status(400).json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
+        return res
+          .status(400)
+          .json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
       return res.status(500).json({ message: err.message || "Upload failed" });
     }
   }
@@ -709,6 +735,7 @@ router.put(
         return res.status(403).json({ message: "Forbidden" });
 
       const b = req.body || {};
+
       const toUpdate = {
         title: (b.title ?? game.title).trim(),
         slug: (
@@ -725,7 +752,7 @@ router.put(
         description: b.description ?? game.description,
         category: b.category ?? game.category,
 
-        // ✅ FIX: owner เปลี่ยนได้เฉพาะ private/unlisted
+        // ✅ FIX: owner เปลี่ยน visibility ได้ (public/private/unlisted)
         visibility: game.visibility,
 
         tags: Array.isArray(b["tags[]"])
@@ -735,6 +762,7 @@ router.put(
           : Array.isArray(game.tags)
           ? game.tags
           : [],
+
         kind:
           b.kind === "download"
             ? "download"
@@ -743,13 +771,12 @@ router.put(
             : game.kind || "html",
       };
 
-      // ✅ FIX: รับ visibility จาก owner เฉพาะ private/unlisted
       const visIn = String(b.visibility || "").trim();
-      if (visIn === "private" || visIn === "unlisted") {
+      if (visIn === "public" || visIn === "private" || visIn === "unlisted") {
         toUpdate.visibility = visIn;
       }
 
-      // หา gameId จาก URL เดิม (รองรับทั้ง local และ Firebase)
+      // หา gameId จาก URL เดิม
       let gameId =
         extractGameIdFromUrl(game.fileUrl) ||
         extractGameIdFromUrl(game.coverUrl) ||
@@ -780,7 +807,10 @@ router.put(
             }
           } else if (/\.zip$/i.test(file.originalname)) {
             if (useFirebase) {
-              const unzipDir = path.join(tmpDir, `unzip-${gameId}-${Date.now()}`);
+              const unzipDir = path.join(
+                tmpDir,
+                `unzip-${gameId}-${Date.now()}`
+              );
               await fsp.mkdir(unzipDir, { recursive: true });
 
               const zip = new AdmZip(file.path);
@@ -792,9 +822,7 @@ router.put(
 
               const idx = await findIndexHtml(unzipDir);
               if (!idx)
-                return res
-                  .status(400)
-                  .json({ message: "ZIP นี้ไม่มี index.html" });
+                return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
 
               await uploadDirToFirebase(unzipDir, keyPrefix);
 
@@ -811,9 +839,7 @@ router.put(
               }
               const idx = await findIndexHtml(gameDir);
               if (!idx)
-                return res
-                  .status(400)
-                  .json({ message: "ZIP นี้ไม่มี index.html" });
+                return res.status(400).json({ message: "ZIP นี้ไม่มี index.html" });
               toUpdate.fileUrl = `/uploads/games/${gameId}/${idx.rel}`;
             }
           } else {
@@ -893,13 +919,16 @@ router.put(
     } catch (err) {
       console.error("[games.update]", err);
       if (err?.code === 11000)
-        return res.status(400).json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
+        return res
+          .status(400)
+          .json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
       return res.status(500).json({ message: err.message || "Save failed" });
     }
   }
 );
 
 /* ===== READ ===== */
+
 router.get("/search", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
@@ -917,7 +946,7 @@ router.get("/search", async (req, res) => {
     }
     if (category && category !== "all") cond.category = category;
 
-    // ค้นหาเฉพาะเกมที่เผยแพร่แล้ว
+    // ✅ public only
     cond.visibility = "public";
 
     const total = await Game.countDocuments(cond);
@@ -935,16 +964,16 @@ router.get("/search", async (req, res) => {
   }
 });
 
-// ✅ FIX: list route รองรับ 2 โหมด
-// - /api/games            => public only (เอาไว้ใช้ Home/Discover)
+// ✅ list route 2 โหมด
+// - /api/games            => public only (Home/Discover)
 // - /api/games?mine=1     => ของฉันทั้งหมด (ต้อง login)
 router.get("/", readOptionalUser, async (req, res) => {
   try {
     const mine = String(req.query.mine || "") === "1";
 
-    // ของฉัน
     if (mine) {
-      if (!req.user?._id) return res.status(401).json({ message: "Unauthorized" });
+      if (!req.user?._id)
+        return res.status(401).json({ message: "Unauthorized" });
 
       const q = { uploader: req.user._id };
       if (req.query.kind) q.kind = req.query.kind;
@@ -956,7 +985,7 @@ router.get("/", readOptionalUser, async (req, res) => {
       return res.json(list);
     }
 
-    // list ปกติให้เห็นเฉพาะ public
+    // ✅ public only
     const q = { visibility: "public" };
     if (req.query.uploader) q.uploader = req.query.uploader;
     if (req.query.kind) q.kind = req.query.kind;
@@ -972,40 +1001,23 @@ router.get("/", readOptionalUser, async (req, res) => {
   }
 });
 
-// ✅ FIX: กันการเข้าถึงเกม private/review (ต้องเป็น owner/admin)
-// unlisted = คนมีลิ้งเข้าได้ แต่ไม่ขึ้น list/search
+// ✅ Detail: private/suspended กันคนอื่น (404)
 router.get("/:id", readOptionalUser, async (req, res) => {
-  const g = await Game.findById(req.params.id).populate(
-    "uploader",
-    "username avatarUrl"
-  );
-  if (!g) return res.status(404).json({ message: "Not found" });
-
-  const meId = req.user?._id ? String(req.user._id) : null;
-  const ownerId = g.uploader?._id ? String(g.uploader._id) : String(g.uploader);
-  const isOwner = !!meId && meId === ownerId;
-  const isAdmin = req.user?.role === "admin" || g?.uploader?.role === "admin"; // เผื่อกรณีมี role จาก session
-
-  // public/unlisted เข้าได้
-  if (g.visibility === "public" || g.visibility === "unlisted") {
-    return res.json(g);
-  }
-
-  // private/review เข้าได้เฉพาะ owner/admin
-  if (isOwner || isAdmin) {
-    return res.json(g);
-  }
-
-  // ซ่อนว่าเกมมีอยู่ (กันเดาสุ่ม id)
-  return res.status(404).json({ message: "Not found" });
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+  return res.json(game);
 });
 
 /* ====== REVIEWS ====== */
 
-// ดึงรวมคะแนน (summary สำหรับหัวเรื่อง/ดาวเฉลี่ย)
-router.get("/:id/ratings", async (req, res) => {
+// ✅ ratings: กัน private
+router.get("/:id/ratings", readOptionalUser, async (req, res) => {
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
   const g = await Game.findById(req.params.id).lean();
   if (!g) return res.status(404).json({ message: "Not found" });
+
   res.json({
     count: g.ratingsCount || 0,
     avg: g.ratingsAvg || 0,
@@ -1013,8 +1025,11 @@ router.get("/:id/ratings", async (req, res) => {
   });
 });
 
-// รายการรีวิว (แบ่งหน้า)
-router.get("/:id/reviews", async (req, res) => {
+// ✅ list reviews: กัน private
+router.get("/:id/reviews", readOptionalUser, async (req, res) => {
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
   const page = Math.max(parseInt(req.query.page || "1", 10), 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit || "10", 10), 1), 50);
 
@@ -1031,9 +1046,13 @@ router.get("/:id/reviews", async (req, res) => {
   res.json({ items, total, page, limit });
 });
 
-// ของฉัน (ใช้เติมค่าตอนเปิด modal)
 router.get("/:id/reviews/me", readOptionalUser, async (req, res) => {
+  // ถ้าไม่ได้ login ก็ไม่มีรีวิวส่วนตัว
   if (!req.user?._id) return res.json({ score: null, text: "" });
+
+  // ✅ กัน private ด้วย (ถ้าไม่ allowed ก็ 404)
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
 
   const r = await Review.findOne({
     game: req.params.id,
@@ -1043,15 +1062,15 @@ router.get("/:id/reviews/me", readOptionalUser, async (req, res) => {
   res.json({ score: r?.score ?? null, text: r?.text ?? "" });
 });
 
-// สร้าง/แก้รีวิว + อัปเดตรวมคะแนน
 router.put("/:id/reviews", authRequired, async (req, res) => {
+  // ✅ กัน private: ต้องเป็น owner/admin หรือเกม public/unlisted
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
   const score = Number(req.body?.score);
   const text = String(req.body?.text || "");
   if (!(score >= 1 && score <= 5))
     return res.status(400).json({ message: "score must be 1..5" });
-
-  const game = await Game.findById(req.params.id);
-  if (!game) return res.status(404).json({ message: "Not found" });
 
   await Review.updateOne(
     { game: game._id, user: req.user._id },
@@ -1063,8 +1082,10 @@ router.put("/:id/reviews", authRequired, async (req, res) => {
   res.json({ ok: true, ...sum });
 });
 
-// ลบรีวิวของฉัน
 router.delete("/:id/reviews/:rid", authRequired, async (req, res) => {
+  const { game, allowed } = await loadGameForRead(req, req.params.id);
+  if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
   const r = await Review.findById(req.params.rid);
   if (!r) return res.status(404).json({ message: "Not found" });
   if (String(r.user) !== String(req.user._id))
@@ -1102,11 +1123,7 @@ router.post("/:id/monthly-vote", authRequired, async (req, res) => {
     const doc = await MonthlyVote.findOneAndUpdate(
       { user: userId, monthKey },
       { game: gameId },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true,
-      }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
     const count = await MonthlyVote.countDocuments({
@@ -1208,10 +1225,8 @@ router.delete("/:id", authRequired, async (req, res) => {
     }
 
     if (gameId) {
-      // ลบไฟล์ local เก่า (ถ้ามี)
       deletes.push(rmrf(path.join(uploadsRoot, "games", gameId)));
 
-      // ลบไฟล์ใน Firebase ตาม prefix
       if (useFirebase) {
         const prefix = `${FIREBASE_KEY_PREFIX}/${gameId}/`;
         deletes.push(
