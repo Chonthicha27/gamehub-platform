@@ -8,7 +8,7 @@ const GameSchema = new mongoose.Schema(
     tagline: { type: String, default: "" },
     description: { type: String, default: "" },
 
-    // หมวดหมู่หลักของเกม (Genre แบบ itch.io)
+    // หมวดหมู่หลักของเกม
     category: {
       type: String,
       enum: [
@@ -39,7 +39,7 @@ const GameSchema = new mongoose.Schema(
 
     // ไฟล์/รูป
     coverUrl: { type: String, default: "" },
-    fileUrl: { type: String, required: true }, // path ที่เล่น/ดาวน์โหลดจริง
+    fileUrl: { type: String, required: true },
     screens: [{ type: String, default: [] }],
 
     // โหมดไฟล์
@@ -53,22 +53,21 @@ const GameSchema = new mongoose.Schema(
 
     /**
      * visibility:
-     * - public     = สาธารณะ (ขึ้น home/search และทุกคนเข้าได้)
-     * - unlisted   = ไม่ขึ้น home/search แต่คนมีลิงก์เข้าได้
-     * - private    = เห็นเฉพาะเจ้าของ/แอดมิน
-     * - review     = รอแอดมินอนุมัติ (เช่น user ขอเปลี่ยนเป็น public)
+     * - public     = เผยแพร่แล้ว
+     * - unlisted   = มีลิงก์เข้าได้
+     * - private    = เจ้าของ/แอดมิน
+     * - review     = รอแอดมินอนุมัติ
      * - suspended  = ระงับ
      */
     visibility: {
       type: String,
       enum: ["public", "unlisted", "private", "review", "suspended"],
-      default: "public",
+      default: "review", // ✅ FIX: ห้าม default เป็น public
     },
 
     /**
-     * requestedVisibility:
-     * - ใช้เก็บ “สิ่งที่ผู้ใช้ขอ” ตอนต้องรออนุมัติ
-     *   เช่น user ขอ public -> visibility = review, requestedVisibility = public
+     * สิ่งที่ user ขอ (ต้องรอแอดมิน)
+     * เช่น ขอ public → visibility=review, requestedVisibility=public
      */
     requestedVisibility: {
       type: String,
@@ -77,20 +76,19 @@ const GameSchema = new mongoose.Schema(
     },
     visibilityRequestedAt: { type: Date },
 
-    // ข้อมูลการระงับเกม (ถ้ามี)
+    // ระงับ
     suspendedReason: { type: String, default: "" },
     suspendedAt: { type: Date },
 
     // ===== Stats =====
-    playsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดเล่น (Play)
-    downloadsCount: { type: Number, default: 0 }, // จำนวนครั้งที่กดดาวน์โหลด (Download)
-    lastPlayedAt: { type: Date }, // เวลาที่มีการเล่นล่าสุด
-    lastDownloadedAt: { type: Date }, // เวลาที่มีการดาวน์โหลดล่าสุด
+    playsCount: { type: Number, default: 0 },
+    downloadsCount: { type: Number, default: 0 },
+    lastPlayedAt: { type: Date },
+    lastDownloadedAt: { type: Date },
 
-    // ===== Ratings summary =====
+    // ===== Ratings =====
     ratingsCount: { type: Number, default: 0 },
     ratingsAvg: { type: Number, default: 0 },
-    // index 0..4 -> 1..5 ดาว
     ratingsDist: { type: [Number], default: [0, 0, 0, 0, 0] },
   },
   { timestamps: true }
@@ -99,8 +97,6 @@ const GameSchema = new mongoose.Schema(
 // indexes
 GameSchema.index({ createdAt: -1 });
 GameSchema.index({ category: 1 });
-
-// (optional) ถ้าคุณจะทำหน้า “ยอดฮิต” บ่อยๆ เพิ่ม index ได้
 GameSchema.index({ playsCount: -1 });
 GameSchema.index({ downloadsCount: -1 });
 
