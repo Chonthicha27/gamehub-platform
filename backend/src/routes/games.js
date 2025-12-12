@@ -995,36 +995,6 @@ router.put(
   }
 );
 
-/* ===== ADMIN APPROVE =====
-   POST /api/games/:id/approve-public
-   ✅ เฉพาะ admin: อนุมัติคำขอ public
-*/
-router.post("/:id/approve-public", authRequired, async (req, res) => {
-  try {
-    if (!isAdminUser(req)) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    const game = await Game.findById(req.params.id);
-    if (!game) return res.status(404).json({ message: "Not found" });
-
-    // อนุมัติเฉพาะกรณีที่อยู่ review และขอ public
-    if (game.visibility !== "review" || game.requestedVisibility !== "public") {
-      return res.status(400).json({ message: "No public request to approve" });
-    }
-
-    game.visibility = "public";
-    game.requestedVisibility = "";
-    game.visibilityRequestedAt = null;
-
-    await game.save();
-
-    return res.json({ ok: true, game });
-  } catch (err) {
-    console.error("[approve-public]", err);
-    return res.status(500).json({ message: "approve-public failed" });
-  }
-});
 
 /* ===== READ ===== */
 
