@@ -34,6 +34,16 @@ const CommentSchema = new Schema(
 
     content: { type: String, required: true, trim: true },
 
+    // ✅ NEW: รองรับ reply (คอมเมนต์ตอบกลับ)
+    // - คอมเมนต์หลัก: parentId = null
+    // - ตอบกลับ: parentId = _id ของคอมเมนต์หลัก
+    parentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Comment",
+      default: null,
+      index: true,
+    },
+
     // visible   = แสดงผลปกติ
     // hidden    = แอดมินซ่อนเพราะไม่เหมาะสม
     // deleted   = ลบถาวร (จริง ๆ แล้วเราจะ delete ออกจาก DB ไปเลยในบางกรณี)
@@ -60,5 +70,8 @@ const CommentSchema = new Schema(
 CommentSchema.index({ createdAt: -1 });
 CommentSchema.index({ game: 1, createdAt: -1 });
 CommentSchema.index({ reportsCount: -1 });
+
+// ✅ NEW index: โหลด replies ต่อคอมเมนต์หลักเร็วขึ้น
+CommentSchema.index({ game: 1, parentId: 1, createdAt: 1 });
 
 module.exports = mongoose.model("Comment", CommentSchema);
