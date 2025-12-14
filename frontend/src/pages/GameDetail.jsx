@@ -6,12 +6,45 @@ import { cdn } from "../api/cdn";
 import FavoriteButton from "../components/FavoriteButton";
 import RateReviewModal from "../components/RateReviewModal";
 
-const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(u);
+const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u || ""));
 const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
 const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
 
 const ICON_PLAY = "🎮";
 const ICON_DOWNLOAD = "📥";
+
+// ✅ data-uri fallback (ไม่มีทาง 404)
+const FALLBACK_AVATAR_DATA =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="48" fill="url(#g)"/>
+  <circle cx="48" cy="38" r="16" fill="rgba(2,6,23,.65)"/>
+  <path d="M20 82c4-16 18-24 28-24s24 8 28 24" fill="rgba(2,6,23,.65)"/>
+</svg>`);
+
+const FALLBACK_COVER_DATA =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0b1225"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+    fill="rgba(148,163,184,.7)" font-family="system-ui,Segoe UI" font-size="20">
+    No cover
+  </text>
+</svg>`);
 
 function visibilityLabel(v) {
   switch (v) {
@@ -30,16 +63,29 @@ function visibilityLabel(v) {
   }
 }
 
-/** normalize image src + fallback */
-function safeImgSrc(src, fallback = "/avatar-default.png") {
-  const s = String(src || "").trim();
-  if (!s) return cdn(fallback);
+/**
+ * ✅ กัน cdn() ไปทับ url เต็ม ทำให้รูปเพี้ยน
+ * - http/https, data:, blob: => ใช้ตรงๆ
+ * - ที่เหลือ => ส่งเข้า cdn()
+ */
+function toCdn(u = "") {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (/^(https?:)?\/\//i.test(s)) return s;
+  if (/^data:/i.test(s)) return s;
+  if (/^blob:/i.test(s)) return s;
   return cdn(s);
 }
 
-function Img({ src, alt, className, fallback = "/avatar-default.png", ...rest }) {
+function safeImgSrc(src, fallback) {
+  const s = String(src || "").trim();
+  if (!s) return fallback;
+  return toCdn(s);
+}
+
+function Img({ src, alt, className, fallback = FALLBACK_AVATAR_DATA, ...rest }) {
   const [bad, setBad] = useState(false);
-  const finalSrc = bad ? cdn(fallback) : safeImgSrc(src, fallback);
+  const finalSrc = bad ? fallback : safeImgSrc(src, fallback);
 
   return (
     <img
@@ -52,6 +98,14 @@ function Img({ src, alt, className, fallback = "/avatar-default.png", ...rest })
   );
 }
 
+/** ✅ FIX: รองรับ author เป็น object หรือเป็น string id */
+function getAuthorIdFromComment(c) {
+  const a = c?.author;
+  if (!a) return "";
+  if (typeof a === "object") return String(a._id || "");
+  return String(a || "");
+}
+
 export default function GameDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -59,7 +113,6 @@ export default function GameDetail() {
   const [game, setGame] = useState(null);
   const [me, setMe] = useState(null);
   const [busy, setBusy] = useState(false);
-
   const [pageError, setPageError] = useState("");
 
   const [summary, setSummary] = useState({
@@ -78,8 +131,9 @@ export default function GameDetail() {
   const [commentText, setCommentText] = useState("");
 
   // reply
-  const [replyToId, setReplyToId] = useState(null); // ✅ ตอนนี้ reply ได้ทุกชั้น
+  const [replyToId, setReplyToId] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [replyToMeta, setReplyToMeta] = useState(null); // { username, preview }
 
   // monthly vote
   const [votedThisMonth, setVotedThisMonth] = useState(false);
@@ -287,24 +341,33 @@ export default function GameDetail() {
       minute: "2-digit",
     });
 
-  // ✅✅ เปลี่ยนเป็น TREE + recursive เพื่อให้ Reply ได้ไม่จำกัดชั้น
+  // ✅ รองรับชื่อฟิลด์ parent หลายแบบ + ใส่ __parentId ให้แสดง “ตอบกลับใคร”
   const commentTree = useMemo(() => {
     const list = Array.isArray(comments) ? comments : [];
-    const getParent = (c) => c?.parentId || c?.parent || c?.parentComment || c?.replyTo || null;
 
-    const map = new Map(); // id -> node
+    const getParent = (c) =>
+      c?.parentId ||
+      c?.parent ||
+      c?.parentComment ||
+      c?.parentCommentId ||
+      c?.replyTo ||
+      c?.replyToId ||
+      c?.reply_to ||
+      c?.parent_id ||
+      null;
+
+    const map = new Map();
     const roots = [];
 
-    // สร้าง node
     for (const c of list) {
-      map.set(String(c._id), { ...c, __children: [] });
+      map.set(String(c._id), { ...c, __children: [], __parentId: null });
     }
 
-    // ผูก parent/child
     for (const c of list) {
       const node = map.get(String(c._id));
       const pid = getParent(c);
       const parentKey = pid ? String(pid?._id || pid) : null;
+      node.__parentId = parentKey || null;
 
       if (parentKey && map.has(parentKey)) {
         map.get(parentKey).__children.push(node);
@@ -313,17 +376,19 @@ export default function GameDetail() {
       }
     }
 
-    // sort ตามเวลา
     const sortByDate = (arr) => {
       arr.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
       for (const n of arr) sortByDate(n.__children);
     };
     sortByDate(roots);
 
-    return roots;
+    return { roots, map };
   }, [comments]);
 
-  // loading / error
+  // map ไว้หา parent ตอนโชว์ "ตอบกลับ @xxx"
+  const commentMap = commentTree.map;
+  const commentRoots = commentTree.roots;
+
   if (!game) {
     return (
       <div className="container section">
@@ -336,8 +401,8 @@ export default function GameDetail() {
     );
   }
 
-  const fileSrc = cdn(game.fileUrl || "");
-  const coverSrc = safeImgSrc(game.coverUrl || "/no-cover.png", "/no-cover.png");
+  const fileSrc = toCdn(game.fileUrl || "");
+  const coverSrc = safeImgSrc(game.coverUrl, FALLBACK_COVER_DATA);
 
   const isFavorited = !!(me?.favorites || []).find((gid) => String(gid) === String(id));
   const uploader = game.uploader && typeof game.uploader === "object" ? game.uploader : null;
@@ -372,21 +437,17 @@ export default function GameDetail() {
     }
   };
 
-  // ✅ reply ได้ทุกชั้น (ส่ง parentId เป็น id ของคอมเมนต์ที่กด Reply)
   const submitReply = async (parentId) => {
     if (!authed) return alert("กรุณาเข้าสู่ระบบก่อนตอบกลับ");
     const content = replyText.trim();
     if (!content) return alert("พิมพ์ข้อความตอบกลับก่อนนะ");
 
     try {
-      const res = await api.post(
-        `/games/${game._id}/comments`,
-        { content, parentId },
-        { withCredentials: true }
-      );
+      const res = await api.post(`/games/${game._id}/comments`, { content, parentId }, { withCredentials: true });
       setComments((xs) => [...xs, res.data]);
       setReplyText("");
       setReplyToId(null);
+      setReplyToMeta(null);
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || "ตอบกลับไม่สำเร็จ");
@@ -405,6 +466,51 @@ export default function GameDetail() {
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || "รายงานไม่สำเร็จ");
+    }
+  };
+
+  // ✅ ลบคอมเมนต์ตัวเอง
+  const deleteComment = async (comment) => {
+    if (!authed) return alert("ต้องเข้าสู่ระบบก่อน");
+
+    // ✅ FIX: รองรับ author เป็น string หรือ object
+    const myId = String(me?._id || "");
+    const authorId = getAuthorIdFromComment(comment);
+    const isMine = myId && authorId && myId === authorId;
+
+    if (!isMine && !isAdmin) return alert("ลบได้เฉพาะคอมเมนต์ของตัวเอง");
+
+    const ok = confirm("ลบคอมเมนต์นี้ใช่ไหม?");
+    if (!ok) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      // endpoint ต้องเป็น /games/:gameId/comments/:commentId (ตรงกับ backend)
+      await api.delete(`/games/${game._id}/comments/${comment._id}`, { withCredentials: true, headers });
+
+      // ลบทั้งตัวมันและลูกๆ ใน UI (เพื่อไม่ให้มี orphan)
+      const removeSet = new Set();
+      const collect = (node) => {
+        removeSet.add(String(node._id));
+        (node.__children || []).forEach(collect);
+      };
+
+      const node = commentMap.get(String(comment._id));
+      if (node) collect(node);
+      else removeSet.add(String(comment._id));
+
+      setComments((xs) => xs.filter((x) => !removeSet.has(String(x._id))));
+
+      if (replyToId && removeSet.has(String(replyToId))) {
+        setReplyToId(null);
+        setReplyText("");
+        setReplyToMeta(null);
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e?.response?.data?.message || "ลบคอมเมนต์ไม่สำเร็จ");
     }
   };
 
@@ -464,23 +570,29 @@ export default function GameDetail() {
 
   const showSummaryStrip = isOwner || isAdmin;
 
-  // ✅ render comment แบบ recursive (reply ได้ไม่จำกัดชั้น)
   const renderCommentNode = (c, depth = 0) => {
-    const isMine = String(me?._id || "") === String(c.author?._id || "");
+    // ✅ FIX: รองรับ author เป็น string หรือ object (ใช้ helper)
+    const myId = String(me?._id || "");
+    const authorId = getAuthorIdFromComment(c);
+    const isMine = myId && authorId && myId === authorId;
+
     const canReport = me?._id && !isMine;
+    const canDelete = isMine || isAdmin;
+    const isActive = replyToId && String(replyToId) === String(c._id);
+
+    const authorName = c.author?.username || c.author?.name || "ผู้ใช้";
+    const avatar = c.author?.avatarUrl || c.author?.avatar || c.author?.photoURL || "";
+
+    const parentNode = c.__parentId ? commentMap.get(String(c.__parentId)) : null;
+    const parentName = parentNode?.author?.username || parentNode?.author?.name || "";
 
     return (
-      <div key={c._id} className="gd-thread" style={{ marginLeft: depth ? depth * 26 : 0 }}>
-        <article className={`gd-comment ${depth ? "gd-comment--nested" : ""}`}>
-          <Img
-            className="gd-comment-av"
-            src={c.author?.avatarUrl || c.author?.avatar || "/avatar-default.png"}
-            alt=""
-            fallback="/avatar-default.png"
-          />
+      <div key={c._id} className="gd-thread" style={{ ["--depth"]: depth }}>
+        <article className={`gd-comment ${depth ? "gd-comment--nested" : ""} ${isActive ? "gd-comment--active" : ""}`}>
+          <Img className="gd-comment-av" src={avatar} alt="" fallback={FALLBACK_AVATAR_DATA} />
           <div className="gd-comment-main">
             <div className="gd-comment-head">
-              <span className="gd-comment-name">{c.author?.username || "ผู้ใช้"}</span>
+              <span className="gd-comment-name">{authorName}</span>
               <span className="gd-comment-time">{prettyDate(c.createdAt)}</span>
 
               <div className="gd-comment-actions">
@@ -491,9 +603,23 @@ export default function GameDetail() {
                     onClick={() => {
                       setReplyToId(c._id);
                       setReplyText("");
+                      setReplyToMeta({
+                        username: authorName,
+                        preview: (c.content || "").trim().slice(0, 120),
+                      });
+                      setTimeout(() => {
+                        const el = document.getElementById("gd-reply-box");
+                        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }, 30);
                     }}
                   >
                     Reply
+                  </button>
+                )}
+
+                {canDelete && (
+                  <button type="button" className="gd-action-link danger2" onClick={() => deleteComment(c)}>
+                    Delete
                   </button>
                 )}
 
@@ -505,12 +631,24 @@ export default function GameDetail() {
               </div>
             </div>
 
+            {/* ✅ ป้ายบอกว่าคอมเมนต์นี้ตอบกลับใคร */}
+            {parentName ? (
+              <div className="gd-reply-badge">
+                ตอบกลับ <span className="gd-mention">@{parentName}</span>
+              </div>
+            ) : null}
+
             <div className="gd-comment-body">
               {c.content?.trim() || <span className="gd-comment-muted">(ไม่มีข้อความ)</span>}
             </div>
 
             {replyToId && String(replyToId) === String(c._id) && (
-              <div className="gd-reply-box">
+              <div className="gd-reply-box" id="gd-reply-box">
+                <div className="gd-replying-to">
+                  กำลังตอบกลับ <b className="gd-mention">@{replyToMeta?.username || "ผู้ใช้"}</b>
+                  {replyToMeta?.preview ? <span className="gd-reply-preview">“{replyToMeta.preview}”</span> : null}
+                </div>
+
                 <textarea
                   className="gd-reply-input"
                   rows={2}
@@ -527,6 +665,7 @@ export default function GameDetail() {
                     onClick={() => {
                       setReplyToId(null);
                       setReplyText("");
+                      setReplyToMeta(null);
                     }}
                   >
                     ยกเลิก
@@ -538,9 +677,7 @@ export default function GameDetail() {
         </article>
 
         {Array.isArray(c.__children) && c.__children.length > 0 && (
-          <div className="gd-replies">
-            {c.__children.map((child) => renderCommentNode(child, depth + 1))}
-          </div>
+          <div className="gd-replies">{c.__children.map((child) => renderCommentNode(child, depth + 1))}</div>
         )}
       </div>
     );
@@ -551,8 +688,6 @@ export default function GameDetail() {
       <StyleLocal />
 
       <div className="gd-page">
-        {/* ❌ ลบ DEBUG STRIP ออกแล้ว */}
-
         <div className="gd-media">
           <div className="gd-media-inner">
             {playable && !downloadOnly && fileSrc ? (
@@ -584,12 +719,12 @@ export default function GameDetail() {
                     by{" "}
                     <Link to="/profile" className="gd-author">
                       <Img
-                        src={uploader.avatarUrl || uploader.avatar || "/avatar-default.png"}
+                        src={uploader.avatarUrl || uploader.avatar || uploader.photoURL || ""}
                         alt="u"
                         className="gd-author__avatar"
-                        fallback="/avatar-default.png"
+                        fallback={FALLBACK_AVATAR_DATA}
                       />
-                      {uploader.username || "unknown"}
+                      {uploader.username || uploader.name || "unknown"}
                     </Link>
                   </span>
                 )}
@@ -681,44 +816,7 @@ export default function GameDetail() {
           <section className="gd-section">
             <h2 className="gd-sec-title">รายละเอียดเกม</h2>
             <p className="gd-desc">{game.description?.trim() || "ยังไม่มีคำอธิบายเกม"}</p>
-
-            {!!(game.tags || []).length && (
-              <div className="gd-tags-inline">
-                {game.tags.map((t) => (
-                  <span key={t} className="gd-chip-tag">
-                    #{t}
-                  </span>
-                ))}
-              </div>
-            )}
           </section>
-
-          {videoEmbedUrl && (
-            <section className="gd-section gd-video">
-              <h2 className="gd-sec-title">วิดีโอตัวอย่าง</h2>
-              <div className="gd-video-frame-wrap">
-                <iframe
-                  src={videoEmbedUrl}
-                  title={`${game.title} trailer`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-            </section>
-          )}
-
-          {screenshots.length > 0 && (
-            <section className="gd-section gd-screens">
-              <h2 className="gd-sec-title">สกรีนช็อต</h2>
-              <div className="gd-screens-grid">
-                {screenshots.map((s, i) => (
-                  <button key={s || i} type="button" className="gd-screen" onClick={() => window.open(cdn(s), "_blank")}>
-                    <img src={cdn(s)} alt={`Screenshot ${i + 1}`} loading="lazy" />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
 
           {showSummaryStrip && (
             <section className="gd-section gd-rating-strip">
@@ -771,7 +869,6 @@ export default function GameDetail() {
               </div>
             </div>
 
-            {/* COMMENTS */}
             {activeTab === "comments" && (
               <div className="gd-comments">
                 <div className="gd-comment-form">
@@ -788,20 +885,18 @@ export default function GameDetail() {
                       ส่งคอมเมนต์
                     </button>
                   </div>
-                  <p className="gd-note-small">รีวิว/ให้คะแนนผ่านปุ่มด้านบนจะไม่แสดงต่อสาธารณะ (เป็น feedback ลับ)</p>
                 </div>
 
                 <div className="gd-comment-list">
-                  {commentTree.length === 0 ? (
+                  {commentRoots.length === 0 ? (
                     <div className="gd-empty">ยังไม่มีคอมเมนต์ — ลองเขียนความเห็นแรกดูสิ ✨</div>
                   ) : (
-                    commentTree.map((node) => renderCommentNode(node, 0))
+                    commentRoots.map((node) => renderCommentNode(node, 0))
                   )}
                 </div>
               </div>
             )}
 
-            {/* REVIEWS */}
             {activeTab === "reviews" && (
               <div className="gd-reviews-block2">
                 {!(isOwner || isAdmin) ? (
@@ -814,22 +909,16 @@ export default function GameDetail() {
                       <article key={r._id} className="gd-comment">
                         <Img
                           className="gd-comment-av"
-                          src={r.user?.avatarUrl || r.user?.avatar || "/avatar-default.png"}
+                          src={r.user?.avatarUrl || r.user?.avatar || r.user?.photoURL || ""}
                           alt=""
-                          fallback="/avatar-default.png"
+                          fallback={FALLBACK_AVATAR_DATA}
                         />
                         <div className="gd-comment-main">
                           <div className="gd-comment-head">
-                            <span className="gd-comment-name">{r.user?.username || "ผู้ใช้"}</span>
-                            <span className="gd-comment-stars">
-                              {"★".repeat(r.score)}
-                              <span className="gd-comment-stars-faint">{"★".repeat(5 - r.score)}</span>
-                            </span>
+                            <span className="gd-comment-name">{r.user?.username || r.user?.name || "ผู้ใช้"}</span>
                             <span className="gd-comment-time">{prettyDate(r.createdAt)}</span>
                           </div>
-                          <div className="gd-comment-body">
-                            {r.text?.trim() || <span className="gd-comment-muted">(ไม่มีข้อความ แสดงความคิดเห็นด้วยดาวอย่างเดียว)</span>}
-                          </div>
+                          <div className="gd-comment-body">{r.text?.trim() || "(ไม่มีข้อความ)"}</div>
                         </div>
                       </article>
                     ))}
@@ -859,36 +948,12 @@ function StyleLocal() {
 .gd-shell{max-width:1100px;margin:0 auto;}
 .gd-shell--loading{text-align:center;padding:80px 0;color:#e5e7eb;}
 .gd-big-error{
-  margin-top:10px;
-  padding:10px 12px;
-  border-radius:12px;
+  margin-top:10px;padding:10px 12px;border-radius:12px;
   border:1px solid rgba(248,113,113,.45);
   background:rgba(127,29,29,.25);
-  color:#fecaca;
-  display:inline-block;
+  color:#fecaca;display:inline-block;
 }
 .gd-page{max-width:1100px;margin:0 auto;color:#e5e7eb;}
-
-.gd-debug{
-  border:1px solid rgba(148,163,184,.25);
-  background:rgba(2,6,23,.55);
-  border-radius:14px;
-  padding:10px 12px;
-  margin-bottom:12px;
-}
-.gd-debug-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;}
-.gd-debug-k{min-width:60px;color:#93c5fd;font-weight:800;font-size:12px;}
-.gd-debug-v{color:#e5e7eb;font-size:12px;word-break:break-all;opacity:.95;}
-.gd-debug-actions{display:flex;gap:8px;margin-top:8px;}
-.gd-debug-btn{
-  display:inline-flex;align-items:center;justify-content:center;
-  padding:6px 10px;border-radius:999px;
-  border:1px solid rgba(148,163,184,.35);
-  background:rgba(15,23,42,.9);
-  color:#e5e7eb;text-decoration:none;font-weight:800;font-size:12px;
-}
-.gd-debug-btn:hover{border-color:rgba(96,165,250,1);}
-.gd-debug-hint{margin-top:8px;font-size:11px;color:#9ca3af;line-height:1.5}
 
 .gd-media{margin-bottom:18px;}
 .gd-media-inner{
@@ -996,32 +1061,40 @@ function StyleLocal() {
 .gd-comments{margin-top:12px;}
 .gd-comment-input,.gd-reply-input{width:100%;border-radius:10px;border:1px solid rgba(55,65,81,.9);background:rgba(15,23,42,.9);color:#e5e7eb;padding:8px 10px;resize:vertical;}
 .gd-comment-form-actions{display:flex;justify-content:flex-end;margin-top:6px;}
-.gd-note-small{margin-top:4px;font-size:11px;color:#9ca3af;}
 .gd-comment-list{display:flex;flex-direction:column;gap:10px;}
-.gd-thread{display:flex;flex-direction:column;gap:8px;}
-.gd-comment{display:flex;gap:10px;}
-.gd-comment--reply{margin-left:38px;}
+
+.gd-thread{--depth:0;margin-left:calc(var(--depth)*26px);display:flex;flex-direction:column;gap:8px;}
+.gd-comment{display:flex;gap:10px;padding:6px 8px;border-radius:12px;}
+.gd-comment--nested{border-left:2px solid rgba(56,189,248,.22);background:rgba(2,6,23,.18);}
+.gd-comment--active{outline:1px solid rgba(56,189,248,.65);background:rgba(56,189,248,.08);}
+
 .gd-replies{display:flex;flex-direction:column;gap:10px;}
-.gd-comment-av{width:36px;height:36px;border-radius:999px;border:1px solid rgba(148,163,184,.7);object-fit:cover;flex-shrink:0;}
+.gd-comment-av{width:36px;height:36px;border-radius:999px;border:1px solid rgba(148,163,184,.7);object-fit:cover;flex-shrink:0;background:rgba(15,23,42,.9);}
 .gd-comment-main{flex:1 1 auto;min-width:0;}
 .gd-comment-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .gd-comment-name{font-weight:700;}
-.gd-comment-stars{color:#fbbf24;font-size:13px;}
-.gd-comment-stars-faint{color:#4b5563;}
 .gd-comment-time{margin-left:auto;font-size:11px;color:#9ca3af;}
 .gd-comment-body{margin-top:3px;line-height:1.6;white-space:pre-wrap;}
 .gd-comment-muted{color:#9ca3af;font-size:13px;}
+
 .gd-comment-actions{display:flex;gap:10px;margin-left:8px;}
 .gd-action-link{border:none;background:none;color:#93c5fd;cursor:pointer;font-size:11px;font-weight:700;padding:0;}
 .gd-action-link.danger{color:#f87171;}
-.gd-reply-box{margin-top:8px;padding:8px;border-radius:12px;border:1px solid rgba(148,163,184,.25);background:rgba(2,6,23,.55);}
+.gd-action-link.danger2{color:#fb7185;}
+
+.gd-reply-badge{margin-top:2px;font-size:11px;color:#9ca3af;}
+.gd-mention{color:#93c5fd;}
+
+.gd-reply-box{margin-top:8px;padding:10px;border-radius:12px;border:1px solid rgba(148,163,184,.25);background:rgba(2,6,23,.55);}
+.gd-replying-to{font-size:12px;color:#cbd5e1;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.gd-reply-preview{color:#9ca3af;font-style:italic}
 .gd-reply-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+
 .gd-empty{padding:10px 12px;border-radius:10px;background:rgba(15,23,42,.8);border:1px dashed rgba(75,85,99,.8);font-size:13px;color:#e5e7eb;}
 
 @media (max-width:720px){
   .gd-head{flex-direction:column;align-items:flex-start;}
-  .gd-head-actions{width:100%;justify-content:flex-start;margin-top:8px;}
-  .gd-rating-top{flex-direction:column;align-items:flex-start;}
+  .gd-thread{margin-left:calc(var(--depth)*18px);}
 }
 `}</style>
   );

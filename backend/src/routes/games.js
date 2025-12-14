@@ -1033,7 +1033,8 @@ router.get("/:id/comments", readOptionalUser, async (req, res) => {
     };
 
     const items = await Comment.find(cond)
-      .populate("author", "username avatar avatarUrl")
+      // ✅ FIX: เพิ่ม photoURL + name ให้เหมือนรีวิว/หน้าอื่น ๆ (ไม่กระทบของเดิม)
+      .populate("author", "username name avatar avatarUrl photoURL")
       .sort({ createdAt: 1 })
       .lean();
 
@@ -1079,13 +1080,40 @@ router.post("/:id/comments", authRequired, async (req, res) => {
     });
 
     const populated = await Comment.findById(created._id)
-      .populate("author", "username avatar avatarUrl")
+      // ✅ FIX: เพิ่ม photoURL + name เช่นกัน
+      .populate("author", "username name avatar avatarUrl photoURL")
       .lean();
 
     res.json(populated);
   } catch (e) {
     console.error("[games.comments.post]", e);
     res.status(500).json({ message: "create comment failed" });
+  }
+});
+
+// ✅ DELETE comment ของตัวเอง (soft delete)
+router.delete("/:id/comments/:cid", authRequired, async (req, res) => {
+  try {
+    if (!Comment) return res.status(500).json({ message: "Comments feature not configured" });
+
+    const { game, allowed, isAdmin } = await loadGameForRead(req, req.params.id);
+    if (!game || !allowed) return res.status(404).json({ message: "Not found" });
+
+    const c = await Comment.findOne({ _id: req.params.cid, game: req.params.id });
+    if (!c) return res.status(404).json({ message: "Comment not found" });
+
+    const isMine = String(c.author) === String(req.user?._id || "");
+    if (!isMine && !isAdmin) return res.status(403).json({ message: "Forbidden" });
+
+    // ✅ FIX: ห้ามตั้ง content = "" เพราะ schema ส่วนใหญ่ตั้ง required -> จะ validation fail (500)
+    // แค่ soft delete ด้วย status ก็พอ เพราะ GET ไม่ดึง deleted อยู่แล้ว
+    c.status = "deleted";
+    await c.save({ validateBeforeSave: false });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[games.comments.delete]", e);
+    return res.status(500).json({ message: "delete comment failed" });
   }
 });
 
