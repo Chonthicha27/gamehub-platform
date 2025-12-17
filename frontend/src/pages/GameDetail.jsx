@@ -450,7 +450,7 @@ export default function GameDetail() {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       await api.delete(`/games/${game._id}`, { withCredentials: true, headers });
-      nav("/games");
+      nav("/profile");
     } catch (e) {
       alert(e?.response?.data?.message || "ลบไม่สำเร็จ");
     } finally {
