@@ -41,7 +41,7 @@ const GameSchema = new mongoose.Schema(
     coverUrl: { type: String, default: "" },
     fileUrl: { type: String, required: true },
     screens: [{ type: String, default: [] }],
-
+    videoUrl: { type: String, default: "" },
     // โหมดไฟล์
     kind: { type: String, enum: ["html", "download"], default: "html" },
 

@@ -598,6 +598,9 @@ router.post(
         ? [b["tags[]"]]
         : [];
 
+      // ✅ FIX: รับ videoUrl (และรองรับชื่อเก่า trailerUrl เผื่อมีข้อมูลเดิม)
+      const videoUrl = String(b.videoUrl || b.trailerUrl || "").trim();
+
       const file = req.files?.file?.[0];
       if (!file) return res.status(400).json({ message: "กรุณาแนบไฟล์เกม" });
 
@@ -739,6 +742,9 @@ router.post(
         screens,
         kind,
         uploader: req.user?._id,
+
+        // ✅ FIX: บันทึก videoUrl ลงเกม
+        videoUrl,
       });
 
       return res.json(doc);
@@ -803,6 +809,15 @@ router.put(
         visibility: game.visibility,
         requestedVisibility: game.requestedVisibility || "",
         visibilityRequestedAt: game.visibilityRequestedAt || null,
+
+        // ✅ FIX: อัปเดต videoUrl (รองรับ trailerUrl)
+        // - ถ้าส่งมาเป็น "" จะเคลียร์ได้
+        videoUrl:
+          typeof b.videoUrl !== "undefined"
+            ? String(b.videoUrl || "").trim()
+            : typeof b.trailerUrl !== "undefined"
+            ? String(b.trailerUrl || "").trim()
+            : game.videoUrl || "",
       };
 
       if (typeof b.visibility !== "undefined") {

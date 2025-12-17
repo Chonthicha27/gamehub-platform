@@ -83,10 +83,10 @@ export default function UploadGame() {
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
 
-  // media เพิ่มเติม
-  const [trailerUrl, setTrailerUrl] = useState("");
-  const [extraImages, setExtraImages] = useState([]);
-  const [extraPreviews, setExtraPreviews] = useState([]);
+  // ✅ media เพิ่มเติม (แก้ชื่อให้ตรงกับหน้า GameDetail)
+  const [videoUrl, setVideoUrl] = useState("");
+
+  // (คุณบอกลบโค้ดรูปเพิ่มเติมแล้ว ไม่เอา) — เลยเก็บไว้แค่ videoUrl
 
   // options
   const [communityMode, setCommunityMode] = useState("comments"); // off | comments
@@ -111,7 +111,6 @@ export default function UploadGame() {
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
   const screensInputRef = useRef(null);
-  const extrasInputRef = useRef(null);
 
   // slug จาก title
   useEffect(() => {
@@ -141,14 +140,6 @@ export default function UploadGame() {
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [screens]);
 
-  // preview extra images
-  useEffect(() => {
-    if (!extraImages.length) return setExtraPreviews([]);
-    const urls = extraImages.map((f) => URL.createObjectURL(f));
-    setExtraPreviews(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, [extraImages]);
-
   // tag helpers
   const addTag = () => {
     const t = tagDraft.trim().toLowerCase();
@@ -173,13 +164,10 @@ export default function UploadGame() {
     setScreens([]);
     setCoverPreview("");
     setScreenPreviews([]);
-    setTrailerUrl("");
-    setExtraImages([]);
-    setExtraPreviews([]);
+    setVideoUrl("");
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (coverInputRef.current) coverInputRef.current.value = "";
     if (screensInputRef.current) screensInputRef.current.value = "";
-    if (extrasInputRef.current) extrasInputRef.current.value = "";
     setProgress(0);
     setMsg("");
     setKind("html");
@@ -203,16 +191,6 @@ export default function UploadGame() {
       resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
     }
     setScreens(resized);
-  };
-
-  /** รูปภาพเพิ่มเติม (เช่น art, UI, poster ฯลฯ) */
-  const onExtrasChange = async (e) => {
-    const files = Array.from(e.target.files || []).slice(0, 10);
-    const resized = [];
-    for (const f of files) {
-      resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
-    }
-    setExtraImages(resized);
   };
 
   // accept ชนิดไฟล์ตาม kind
@@ -252,9 +230,8 @@ export default function UploadGame() {
       fd.append("file", gameFile);
       screens.forEach((f) => fd.append("screens[]", f));
 
-      // วิดีโอ & รูปเพิ่มเติม (backend ยังไม่ได้เก็บก็ไม่พัง แค่ไม่ถูกใช้)
-      if (trailerUrl.trim()) fd.append("trailerUrl", trailerUrl.trim());
-      extraImages.forEach((f) => fd.append("extras[]", f));
+      // ✅ วิดีโอ: ใช้ชื่อ videoUrl ให้ตรงกับ GameDetail.jsx
+      if (videoUrl.trim()) fd.append("videoUrl", videoUrl.trim());
 
       const token = localStorage.getItem("token");
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
@@ -396,26 +373,42 @@ export default function UploadGame() {
                     onClick={() => setCatOpen((v) => !v)}
                     style={{ borderColor: currentCat.color }}
                   >
-                    <span className="cat-dot" style={{ background: currentCat.color }} />
+                    <span
+                      className="cat-dot"
+                      style={{ background: currentCat.color }}
+                    />
                     <span className="cat-emoji">{currentCat.emoji}</span>
                     <span className="cat-name">{currentCat.name}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" className={catOpen ? "rot" : ""}>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      className={catOpen ? "rot" : ""}
+                    >
                       <path fill="currentColor" d="M7 10l5 5 5-5H7z" />
                     </svg>
                   </button>
 
                   {catOpen && (
-                    <div className="cat-menu" onMouseLeave={() => setCatOpen(false)}>
+                    <div
+                      className="cat-menu"
+                      onMouseLeave={() => setCatOpen(false)}
+                    >
                       {CATEGORIES.map((c) => (
                         <div
                           key={c.id}
-                          className={`cat-item ${c.id === category ? "is-active" : ""}`}
+                          className={`cat-item ${
+                            c.id === category ? "is-active" : ""
+                          }`}
                           onClick={() => {
                             setCategory(c.id);
                             setCatOpen(false);
                           }}
                         >
-                          <span className="cat-dot" style={{ background: c.color }} />
+                          <span
+                            className="cat-dot"
+                            style={{ background: c.color }}
+                          />
                           <span className="cat-emoji">{c.emoji}</span>
                           <span className="cat-name">{c.name}</span>
                         </div>
@@ -428,7 +421,11 @@ export default function UploadGame() {
               <div className="col">
                 <label className="up-label">ชุมชน</label>
                 <div className="pill-row">
-                  <label className={`pill ${communityMode === "off" ? "is-on" : ""}`}>
+                  <label
+                    className={`pill ${
+                      communityMode === "off" ? "is-on" : ""
+                    }`}
+                  >
                     <input
                       type="radio"
                       name="community"
@@ -438,7 +435,11 @@ export default function UploadGame() {
                     />
                     ปิดการมีส่วนร่วม
                   </label>
-                  <label className={`pill ${communityMode === "comments" ? "is-on" : ""}`}>
+                  <label
+                    className={`pill ${
+                      communityMode === "comments" ? "is-on" : ""
+                    }`}
+                  >
                     <input
                       type="radio"
                       name="community"
@@ -459,25 +460,41 @@ export default function UploadGame() {
                 <div className="vis-row">
                   <button
                     type="button"
-                    className={visibility === "public" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    className={
+                      visibility === "public"
+                        ? "vis-pill vis-pill--active"
+                        : "vis-pill"
+                    }
                     onClick={() => setVisibility("public")}
                   >
                     <span>🌐 ส่งขึ้นระบบ (รอตรวจ)</span>
-                    <span className="vis-sub">ยังไม่ขึ้นหน้า Home/Search จนกว่าจะอนุมัติ</span>
+                    <span className="vis-sub">
+                      ยังไม่ขึ้นหน้า Home/Search จนกว่าจะอนุมัติ
+                    </span>
                   </button>
 
                   <button
                     type="button"
-                    className={visibility === "unlisted" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    className={
+                      visibility === "unlisted"
+                        ? "vis-pill vis-pill--active"
+                        : "vis-pill"
+                    }
                     onClick={() => setVisibility("unlisted")}
                   >
                     <span>🔗 Unlisted</span>
-                    <span className="vis-sub">ไม่ขึ้น Home/Search แต่คนมีลิงก์เข้าได้</span>
+                    <span className="vis-sub">
+                      ไม่ขึ้น Home/Search แต่คนมีลิงก์เข้าได้
+                    </span>
                   </button>
 
                   <button
                     type="button"
-                    className={visibility === "private" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    className={
+                      visibility === "private"
+                        ? "vis-pill vis-pill--active"
+                        : "vis-pill"
+                    }
                     onClick={() => setVisibility("private")}
                   >
                     <span>🔒 Private</span>
@@ -486,11 +503,17 @@ export default function UploadGame() {
 
                   <button
                     type="button"
-                    className={visibility === "review" ? "vis-pill vis-pill--active" : "vis-pill"}
+                    className={
+                      visibility === "review"
+                        ? "vis-pill vis-pill--active"
+                        : "vis-pill"
+                    }
                     onClick={() => setVisibility("review")}
                   >
                     <span>🕵️ Draft / Test</span>
-                    <span className="vis-sub">เก็บไว้ทดสอบ (ไม่หลุด public)</span>
+                    <span className="vis-sub">
+                      เก็บไว้ทดสอบ (ไม่หลุด public)
+                    </span>
                   </button>
                 </div>
               </div>
@@ -498,9 +521,18 @@ export default function UploadGame() {
 
             {/* Kind of project */}
             <label className="up-label">Kind of project</label>
-            <select className="up-input" value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="download">Downloadable — You only have files to be downloaded (.rar)</option>
-              <option value="html">HTML — You have a ZIP or HTML file that will be played in the browser</option>
+            <select
+              className="up-input"
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+            >
+              <option value="download">
+                Downloadable — You only have files to be downloaded (.rar)
+              </option>
+              <option value="html">
+                HTML — You have a ZIP or HTML file that will be played in the
+                browser
+              </option>
             </select>
           </section>
 
@@ -510,7 +542,9 @@ export default function UploadGame() {
 
             <div className="up-field">
               <label className="up-label">
-                {kind === "html" ? "ไฟล์เกมหลัก (.html / .zip)" : "ไฟล์เกมหลัก (.rar)"}
+                {kind === "html"
+                  ? "ไฟล์เกมหลัก (.html / .zip)"
+                  : "ไฟล์เกมหลัก (.rar)"}
               </label>
               <input
                 ref={fileInputRef}
@@ -521,7 +555,9 @@ export default function UploadGame() {
               {gameFile && (
                 <div className="file-name tiny">
                   📁 {gameFile.name}{" "}
-                  <span className="muted">({(gameFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  <span className="muted">
+                    ({(gameFile.size / 1024 / 1024).toFixed(1)} MB)
+                  </span>
                 </div>
               )}
               <div className="muted tiny">
@@ -532,7 +568,9 @@ export default function UploadGame() {
             </div>
 
             <div className="up-field">
-              <label className="up-label">ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)</label>
+              <label className="up-label">
+                ภาพหน้าปก (แนะนำ 1200×675, ≤2MB)
+              </label>
               <input
                 ref={coverInputRef}
                 type="file"
@@ -540,7 +578,11 @@ export default function UploadGame() {
                 onChange={onCoverChange}
               />
               <div className="cover-frame">
-                {coverPreview ? <img src={coverPreview} alt="cover" /> : <div className="empty">ยังไม่มีภาพหน้าปก</div>}
+                {coverPreview ? (
+                  <img src={coverPreview} alt="cover" />
+                ) : (
+                  <div className="empty">ยังไม่มีภาพหน้าปก</div>
+                )}
               </div>
             </div>
 
@@ -565,37 +607,19 @@ export default function UploadGame() {
             </div>
 
             <div className="up-field">
-              <label className="up-label">วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)</label>
+              <label className="up-label">
+                วิดีโอตัวอย่าง (ลิงก์ YouTube / Vimeo ฯลฯ)
+              </label>
               <input
                 className="up-input"
                 type="url"
                 placeholder="https://www.youtube.com/watch?v=..."
-                value={trailerUrl}
-                onChange={(e) => setTrailerUrl(e.target.value)}
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
               />
               <div className="muted tiny">
-                ใช้ลิงก์ฝังจากแพลตฟอร์มวิดีโอ แนะนำ YouTube (จะไปใช้แสดงในหน้าเกมภายหลัง)
+                ใส่ลิงก์วิดีโอ แล้วระบบจะเอาไปแสดงในหน้าเกม (GameDetail)
               </div>
-            </div>
-
-            <div className="up-field">
-              <label className="up-label">รูปภาพเพิ่มเติม (เช่น Poster / UI / Art, สูงสุด 10 รูป)</label>
-              <input
-                ref={extrasInputRef}
-                type="file"
-                multiple
-                accept="image/png,image/jpeg,image/webp"
-                onChange={onExtrasChange}
-              />
-              {!!extraPreviews.length && (
-                <div className="screens extras">
-                  {extraPreviews.map((u, i) => (
-                    <figure key={i} className="screen">
-                      <img src={u} alt={`extra-${i}`} />
-                    </figure>
-                  ))}
-                </div>
-              )}
             </div>
 
             {progress > 0 && (
@@ -615,18 +639,27 @@ export default function UploadGame() {
                 </span>
               </div>
               <div className="btn-row__right">
-                <button className="btn btn-ghost" type="button" onClick={resetForm} disabled={busy}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={resetForm}
+                  disabled={busy}
+                >
                   ล้างฟอร์ม
                 </button>
                 <button
-                  className={`btn btn-primary ${!busy && isSuccess ? "btn-primary--success" : ""}`}
+                  className={`btn btn-primary ${
+                    !busy && isSuccess ? "btn-primary--success" : ""
+                  }`}
                   type="submit"
                   disabled={busy}
                 >
                   {busy ? (
                     <>
                       <span className="btn-spinner" />
-                      <span>กำลังอัปโหลด…{progress > 0 ? ` ${progress}%` : ""}</span>
+                      <span>
+                        กำลังอัปโหลด…{progress > 0 ? ` ${progress}%` : ""}
+                      </span>
                     </>
                   ) : isSuccess ? (
                     <>
@@ -791,15 +824,10 @@ function StyleLocal() {
 .cover-frame img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover }
 .cover-frame .empty{ color:#9fb4c8; font-size:13px }
 
-/* สกรีนช็อต & รูปเพิ่มเติม */
+/* สกรีนช็อต */
 .screens{ display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:10px; margin-top:8px }
 .screen{ aspect-ratio:16/9; overflow:hidden; border-radius:12px; border:1px solid var(--stroke); background:rgba(255,255,255,.05) }
 .screen img{ width:100%; height:100%; object-fit:cover }
-
-/* แยก extra นิดหน่อยเผื่ออนาคตอยากสไตล์ต่างกัน */
-.screens.extras .screen{
-  opacity:.96;
-}
 
 /* Progress / Alert / Buttons */
 .progress{ height:10px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid var(--stroke); margin-top:12px; overflow:hidden }

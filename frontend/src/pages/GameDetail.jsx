@@ -106,6 +106,57 @@ function getAuthorIdFromComment(c) {
   return String(a || "");
 }
 
+/** ✅ NEW: แปลงลิงก์ YouTube/Vimeo → embed URL (รองรับ watch, youtu.be, shorts, embed) */
+function toVideoEmbedUrl(rawUrl = "") {
+  const raw = String(rawUrl || "").trim();
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+
+    // ---- YouTube ----
+    const host = url.hostname.replace(/^www\./, "");
+
+    // 1) https://youtube.com/watch?v=ID
+    if (host.includes("youtube.com")) {
+      // /watch?v=
+      if (url.pathname === "/watch") {
+        const vid = url.searchParams.get("v");
+        return vid ? `https://www.youtube.com/embed/${vid}` : "";
+      }
+
+      // /shorts/ID
+      const mShorts = url.pathname.match(/^\/shorts\/([^/?#]+)/i);
+      if (mShorts?.[1]) return `https://www.youtube.com/embed/${mShorts[1]}`;
+
+      // /embed/ID
+      const mEmbed = url.pathname.match(/^\/embed\/([^/?#]+)/i);
+      if (mEmbed?.[1]) return `https://www.youtube.com/embed/${mEmbed[1]}`;
+
+      // /v/ID (เก่า)
+      const mV = url.pathname.match(/^\/v\/([^/?#]+)/i);
+      if (mV?.[1]) return `https://www.youtube.com/embed/${mV[1]}`;
+    }
+
+    // 2) https://youtu.be/ID
+    if (host === "youtu.be") {
+      const vid = url.pathname.replace("/", "").split("/").filter(Boolean)[0];
+      return vid ? `https://www.youtube.com/embed/${vid}` : "";
+    }
+
+    // ---- Vimeo ----
+    if (host.includes("vimeo.com")) {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const vid = parts[parts.length - 1];
+      return vid ? `https://player.vimeo.com/video/${vid}` : "";
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 export default function GameDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -308,28 +359,9 @@ export default function GameDetail() {
 
   const screenshots = useMemo(() => game?.screens || [], [game]);
 
+  // ✅ FIX: ใช้ helper ใหม่ รองรับ shorts / embed / watch / youtu.be
   const videoEmbedUrl = useMemo(() => {
-    const raw = (game?.videoUrl || "").trim();
-    if (!raw) return "";
-    try {
-      const url = new URL(raw);
-      if (url.hostname.includes("youtube.com")) {
-        const vid = url.searchParams.get("v");
-        return vid ? `https://www.youtube.com/embed/${vid}` : "";
-      }
-      if (url.hostname === "youtu.be") {
-        const vid = url.pathname.replace("/", "");
-        return vid ? `https://www.youtube.com/embed/${vid}` : "";
-      }
-      if (url.hostname.includes("vimeo.com")) {
-        const parts = url.pathname.split("/").filter(Boolean);
-        const vid = parts[parts.length - 1];
-        return vid ? `https://player.vimeo.com/video/${vid}` : "";
-      }
-      return "";
-    } catch {
-      return "";
-    }
+    return toVideoEmbedUrl(game?.videoUrl || "");
   }, [game?.videoUrl]);
 
   const prettyDate = (s) =>
@@ -820,6 +852,23 @@ export default function GameDetail() {
           <section className="gd-section">
             <h2 className="gd-sec-title">รายละเอียดเกม</h2>
             <p className="gd-desc">{game.description?.trim() || "ยังไม่มีคำอธิบายเกม"}</p>
+
+            {/* ✅ NEW: แสดงวิดีโอ (YouTube/Vimeo) ถ้ามี videoUrl ที่แปลงเป็น embed ได้ */}
+            {videoEmbedUrl ? (
+              <div className="gd-video">
+                <h2 className="gd-sec-title" style={{ marginTop: 12 }}>
+                  วิดีโอตัวอย่าง
+                </h2>
+                <div className="gd-video-frame-wrap">
+                  <iframe
+                    src={videoEmbedUrl}
+                    title="Game trailer"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {showSummaryStrip && (
@@ -1020,6 +1069,7 @@ function StyleLocal() {
 .gd-desc{margin:0;line-height:1.7;color:#e5edf8;white-space:pre-wrap;}
 .gd-tags-inline{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
 
+/* ✅ Video */
 .gd-video{margin-top:6px;}
 .gd-video-frame-wrap{
   margin-top:6px;border-radius:18px;overflow:hidden;aspect-ratio:16/9;background:#020617;
