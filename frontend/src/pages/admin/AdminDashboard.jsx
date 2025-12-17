@@ -299,7 +299,7 @@ export default function AdminDashboard() {
 
       alert(
         isPending
-          ? 'เกมถูก "Reject / Delete" แล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้).'
+          ? 'เกมถูก "Reject" แล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้).'
           : "ลบเกมเรียบร้อยแล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้)."
       );
     } catch (e) {
@@ -542,7 +542,8 @@ export default function AdminDashboard() {
             </div>
           )}
           <div className="table-wrap">
-            <table className="table table-fixed pretty">
+            <table className="table table-fixed pretty users-table">
+
               <thead>
                 <tr>
                   <th className="col-select">
@@ -605,18 +606,20 @@ export default function AdminDashboard() {
                       <td className="right">
                         <div className="actions">
                           <div className="btn-group compact">
-                            <button
-                              className="btn ghost"
-                              onClick={() => setRole(u._id, "user")}
-                            >
-                              User
-                            </button>
-                            <button
-                              className="btn ghost"
-                              onClick={() => setRole(u._id, "admin")}
-                            >
-                              Admin
-                            </button>
+                        <button
+                          className={`btn role-btn ${u.role === "user" ? "is-active user" : "user"}`}
+                          onClick={() => setRole(u._id, "user")}
+                        >
+                          User
+                        </button>
+
+                        <button
+                          className={`btn role-btn ${u.role === "admin" ? "is-active admin" : "admin"}`}
+                          onClick={() => setRole(u._id, "admin")}
+                        >
+                          Admin
+                        </button>
+
                           </div>
                           {u.status !== "suspended" ? (
                             <button
@@ -703,13 +706,14 @@ export default function AdminDashboard() {
                     <td className="right">
                       <div className="actions">
                         <a
-                          className="btn ghost"
-                          href={g.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open
-                        </a>
+                        className="btn ghost"
+                        href={`/games/${g._id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View Game
+                      </a>
+
 
                         {g.visibility === "public" && (
                           <button
@@ -796,12 +800,13 @@ export default function AdminDashboard() {
                       <div className="actions">
                         <a
                           className="btn ghost"
-                          href={g.fileUrl}
+                          href={`/games/${g._id}`}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Open
+                          View Game
                         </a>
+
                         <button
                           className="btn ok soft"
                           onClick={() => approveGame(g._id)}
@@ -812,7 +817,7 @@ export default function AdminDashboard() {
                           className="btn danger soft"
                           onClick={() => delGame(g)}
                         >
-                          Reject / Delete
+                          Reject
                         </button>
                       </div>
                     </td>

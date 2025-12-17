@@ -517,3 +517,195 @@ body{
     flex-wrap:wrap;
   }
 }
+
+
+/* ✅ FORCE ให้ปุ่มในคอลัมน์ Actions เท่ากัน (วางท้ายไฟล์สุด) */
+.table td .actions .btn,
+.table td .actions a.btn {
+  width: 92px !important;     /* ใช้ width ไปเลยจะเห็นผลชัดสุด */
+  height: 36px !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+/* ให้ User/Admin ในกลุ่มเดียวกันกว้างเท่ากันด้วย */
+.table td .actions .btn-group .btn{
+  width: 78px !important;
+}
+
+/* ===== Role buttons: User/Admin ===== */
+.btn.role-btn{
+  width: 78px;          /* ✅ ทำให้ User/Admin เท่ากัน */
+  height: 36px;         /* ✅ สูงเท่ากัน */
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-weight: 900;
+  box-sizing: border-box;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+/* สีตอนยังไม่ active (เป็นโทนบาง ๆ) */
+.btn.role-btn.user{
+  background: rgba(59,130,246,.12); /* ฟ้า */
+  color: #cfe2ff;
+}
+.btn.role-btn.admin{
+  background: rgba(124,77,255,.12); /* ม่วง */
+  color: #e9ddff;
+}
+
+/* สีตอน active (ชัดเหมือนปุ่มเลือก) */
+.btn.role-btn.is-active.user{
+  background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+  color: #071018;
+  border-color: transparent;
+}
+.btn.role-btn.is-active.admin{
+  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
+  color: #071018;
+  border-color: transparent;
+}
+.table td .actions .btn,
+.table td .actions a.btn{
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* ทำให้ปุ่มทั้งหมดใน Actions เท่ากันเป๊ะ */
+.table td .actions .btn,
+.table td .actions a.btn{
+  width: 96px !important;   /* ปรับได้ เช่น 92/100 */
+  height: 36px !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+/* ยกเลิกค่าที่เคยล็อก role-btn ไว้เล็กกว่า */
+.btn.role-btn{
+  width: 96px !important;
+  height: 36px !important;
+}
+:root{
+  --actW: 110px;  /* ✅ ความยาวปุ่มเท่ากันทั้งหมด */
+  --actH: 36px;
+}
+
+.table td .actions{
+  display: grid !important;
+  grid-template-columns: repeat(2, var(--actW)) !important;
+  gap: 8px 10px !important;
+  justify-content: end !important;
+  align-items: center !important;
+}
+
+/* ทำให้ปุ่มทุกปุ่มยาวเท่ากันจริง ๆ */
+.table td .actions .btn,
+.table td .actions a.btn{
+  inline-size: var(--actW) !important; /* = width แต่ชนะกว่าในบางเคส */
+  min-inline-size: var(--actW) !important;
+  max-inline-size: var(--actW) !important;
+
+  block-size: var(--actH) !important;  /* = height */
+  min-block-size: var(--actH) !important;
+  max-block-size: var(--actH) !important;
+
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+/* ให้ btn-group ไม่ส่งผลต่อความกว้าง */
+.table td .actions .btn-group{
+  display: contents !important;
+}
+/* ให้คอลัมน์ Actions ตรงกันทั้งหัวและแถว */
+.table th.col-actions,
+.table td.col-actions,
+.table th.right,
+.table td.right{
+  text-align: right !important;
+}
+
+/* กันหัวข้อ Actions ดูไม่กลาง/เหลื่อม */
+.table thead th.col-actions{
+  padding-right: 16px; /* ให้ตรงกับ td ที่ padding 16px */
+}
+/* Actions เรียงแนวตั้ง + ชิดขวา */
+.table td .actions{
+  display: flex !important;
+  flex-direction: column !important;   /* ✅ แนวตั้ง */
+  align-items: flex-end !important;    /* ชิดขวา */
+  gap: 8px !important;
+}
+
+/* ทำให้ทุกปุ่มใน Actions กว้าง/สูงเท่ากัน */
+.table td .actions .btn,
+.table td .actions a.btn{
+  width: 120px !important;             /* ✅ ปรับได้ */
+  height: 36px !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+/* ให้ User/Admin ที่อยู่ใน btn-group เรียงแนวตั้งเหมือนกัน */
+.table td .actions .btn-group{
+  display: flex !important;
+  flex-direction: column !important;   /* ✅ แนวตั้ง */
+  gap: 8px !important;
+  align-items: flex-end !important;
+}
+.table td .actions .btn-group .btn{
+  width: 120px !important;
+  height: 36px !important;
+}
+:root{
+  --uActW: 120px;
+  --uActH: 36px;
+}
+
+/* ✅ เฉพาะ Users: Actions เป็น 2x2 */
+.users-table td .actions{
+  display: grid !important;
+  grid-template-columns: repeat(2, var(--uActW)) !important;
+  gap: 10px 12px !important;
+  justify-content: end !important;
+  align-items: center !important;
+}
+
+/* ✅ เฉพาะ Users: ปุ่มเท่ากัน */
+.users-table td .actions .btn,
+.users-table td .actions a.btn{
+  width: var(--uActW) !important;
+  height: var(--uActH) !important;
+  padding: 0 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+/* ✅ เฉพาะ Users: ให้ User/Admin ใน btn-group เป็น item ของ grid */
+.users-table td .actions .btn-group{
+  display: contents !important;
+}

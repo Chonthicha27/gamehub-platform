@@ -21,28 +21,88 @@ export default function SettingsProfile() {
   const pickAvatarRef = useRef(null);
   const pickBannerRef = useRef(null);
 
+  // ✅ sync me -> localStorage + dispatch event (ให้ NavBar/ส่วนอื่นอัปเดตตาม)
+  const syncMeEverywhere = (u) => {
+    try {
+      // บางที่อ่าน key "me"
+      localStorage.setItem("me", JSON.stringify(u));
+
+      // บางที่อ่าน key "user"
+      // (คงค่าที่มีอยู่ แล้วอัปเดต displayName/avatar/banner ให้ตรง)
+      const prevUser = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("user") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      const nextUser = prevUser
+        ? {
+            ...prevUser,
+            displayName: u.displayName,
+            avatarUrl: u.avatarUrl,
+            bannerUrl: u.bannerUrl,
+            username: u.username,
+            email: u.email,
+            role: u.role,
+          }
+        : u;
+
+      localStorage.setItem("user", JSON.stringify(nextUser));
+
+      // broadcast ให้ component อื่น ๆ ที่ฟังอยู่รีเฟรช
+      window.dispatchEvent(new CustomEvent("me:updated", { detail: u }));
+    } catch {
+      // ไม่ให้หน้าแตก ถ้า storage ใช้ไม่ได้
+    }
+  };
+
+  const refreshMe = async () => {
+    const u = (await api.get("/users/me")).data;
+    setMe(u);
+
+    // เติมค่าใส่ form ให้ตรง (กันค่าค้าง)
+    setDisplayName(u.displayName || "");
+    setBio(u.bio || "");
+    setLinks({
+      website: u.links?.website || "",
+      twitter: u.links?.twitter || "",
+      youtube: u.links?.youtube || "",
+      github: u.links?.github || "",
+    });
+
+    syncMeEverywhere(u);
+    return u;
+  };
+
   useEffect(() => {
     (async () => {
-      const u = (await api.get("/users/me")).data;
-      setMe(u);
-      setDisplayName(u.displayName || "");
-      setBio(u.bio || "");
-      setLinks({
-        website: u.links?.website || "",
-        twitter: u.links?.twitter || "",
-        youtube: u.links?.youtube || "",
-        github: u.links?.github || "",
-      });
+      try {
+        await refreshMe();
+      } catch (e) {
+        console.error(e);
+        setMe(null);
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onSave = async () => {
     setSaving(true);
     setMsg("");
     try {
-      await api.put("/users/me", { displayName, bio, links });
-      const u = (await api.get("/users/me")).data;
-      setMe(u);
+      const payload = {
+        displayName: (displayName || "").trim(), // ✅ กันช่องว่างล้วน ๆ
+        bio: bio || "",
+        links,
+      };
+
+      await api.put("/users/me", payload);
+
+      // ✅ สำคัญ: รีโหลด me ใหม่ + sync ไปส่วนอื่น
+      await refreshMe();
+
       setMsg("Saved!");
     } catch (e) {
       setMsg(e?.response?.data?.message || "Save failed");
@@ -54,21 +114,27 @@ export default function SettingsProfile() {
   const uploadAvatar = async (file) => {
     const fd = new FormData();
     fd.append("avatar", file);
+
     await api.post("/users/me/avatar", fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-    const u = (await api.get("/users/me")).data;
-    setMe(u);
+
+    // ✅ รีโหลด me ใหม่ + sync
+    await refreshMe();
+    setMsg("Avatar updated!");
   };
 
   const uploadBanner = async (file) => {
     const fd = new FormData();
     fd.append("banner", file);
+
     await api.post("/users/me/banner", fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-    const u = (await api.get("/users/me")).data;
-    setMe(u);
+
+    // ✅ รีโหลด me ใหม่ + sync
+    await refreshMe();
+    setMsg("Banner updated!");
   };
 
   if (!me) return <div className="container section">Loading…</div>;
@@ -95,6 +161,7 @@ export default function SettingsProfile() {
               className="sp-btn sp-btn--primary"
               onClick={onSave}
               disabled={saving}
+              type="button"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -109,25 +176,18 @@ export default function SettingsProfile() {
             <div
               className="sp-banner"
               onClick={() => pickBannerRef.current?.click()}
+              role="button"
+              tabIndex={0}
             >
-              <img
-                src={cdn(
-                  me.bannerUrl || "/profile-banner-fallback.jpg"
-                )}
-                alt=""
-              />
+              <img src={cdn(me.bannerUrl || "/profile-banner-fallback.jpg")} alt="" />
               <div className="sp-banner__overlay" />
-              <div className="sp-banner__hint">
-                Click to upload banner (1600×400)
-              </div>
+              <div className="sp-banner__hint">Click to upload banner (1600×400)</div>
               <input
                 ref={pickBannerRef}
                 type="file"
                 accept="image/*"
                 hidden
-                onChange={(e) =>
-                  e.target.files[0] && uploadBanner(e.target.files[0])
-                }
+                onChange={(e) => e.target.files?.[0] && uploadBanner(e.target.files[0])}
               />
             </div>
 
@@ -151,9 +211,7 @@ export default function SettingsProfile() {
                   accept="image/*"
                   hidden
                   ref={pickAvatarRef}
-                  onChange={(e) =>
-                    e.target.files[0] && uploadAvatar(e.target.files[0])
-                  }
+                  onChange={(e) => e.target.files?.[0] && uploadAvatar(e.target.files[0])}
                 />
               </div>
 
@@ -165,12 +223,6 @@ export default function SettingsProfile() {
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="How should we call you?"
                 />
-                <div className="sp-username">
-                  @{username}
-                  <span className="sp-username-hint">
-                    &nbsp;· Username can’t be changed here
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -205,9 +257,7 @@ export default function SettingsProfile() {
                 className="sp-input"
                 placeholder="https://example.com"
                 value={links.website}
-                onChange={(e) =>
-                  setLinks({ ...links, website: e.target.value })
-                }
+                onChange={(e) => setLinks({ ...links, website: e.target.value })}
               />
             </div>
 
@@ -219,9 +269,7 @@ export default function SettingsProfile() {
                   className="sp-input sp-input--with-prefix"
                   placeholder="yourname"
                   value={links.twitter}
-                  onChange={(e) =>
-                    setLinks({ ...links, twitter: e.target.value })
-                  }
+                  onChange={(e) => setLinks({ ...links, twitter: e.target.value })}
                 />
               </div>
             </div>
@@ -232,9 +280,7 @@ export default function SettingsProfile() {
                 className="sp-input"
                 placeholder="https://youtube.com/@yourchannel"
                 value={links.youtube}
-                onChange={(e) =>
-                  setLinks({ ...links, youtube: e.target.value })
-                }
+                onChange={(e) => setLinks({ ...links, youtube: e.target.value })}
               />
             </div>
 
@@ -246,9 +292,7 @@ export default function SettingsProfile() {
                   className="sp-input sp-input--with-prefix"
                   placeholder="yourgithub"
                   value={links.github}
-                  onChange={(e) =>
-                    setLinks({ ...links, github: e.target.value })
-                  }
+                  onChange={(e) => setLinks({ ...links, github: e.target.value })}
                 />
               </div>
             </div>

@@ -19,11 +19,19 @@ export default function NavBar({
   const isAdmin =
     currentUser?.isAdmin === true || currentUser?.role === "admin";
 
+  // ✅ ชื่อที่จะแสดง: displayName ก่อน แล้วค่อย username
+  const displayLabel =
+    (currentUser?.displayName || "").trim() ||
+    currentUser?.username ||
+    "User";
+
+  const avatarSeed = encodeURIComponent(
+    currentUser?.username || currentUser?._id || displayLabel || "guest"
+  );
+
   const avatarSrc = currentUser?.avatarUrl
     ? cdn(currentUser.avatarUrl)
-    : `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(
-        currentUser?.username || currentUser?._id || "guest"
-      )}`;
+    : `https://api.dicebear.com/7.x/identicon/svg?seed=${avatarSeed}`;
 
   return (
     <header className="nav-pro">
@@ -87,12 +95,11 @@ export default function NavBar({
                   src={avatarSrc}
                   alt="avatar"
                   onError={(e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(
-                      currentUser?.username || currentUser?._id || "guest"
-                    )}`;
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${avatarSeed}`;
                   }}
                 />
-                <span>Hi, {currentUser?.username || "User"}</span>
+                {/* ✅ ใช้ displayName ก่อน */}
+                <span>Hi, {displayLabel}</span>
               </button>
 
               <button
