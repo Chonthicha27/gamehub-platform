@@ -70,7 +70,6 @@ export default function App() {
 
   if (!booted) return null;
 
-  // ✅ เช็กแอดมินจากข้อมูล user ที่ backend ส่งมา
   const isAdmin = user?.isAdmin === true || user?.role === "admin";
 
   return (
@@ -109,7 +108,7 @@ export default function App() {
           }
         />
 
-        {/* ===== Admin: ต้องเป็นแอดมินเท่านั้น ===== */}
+        {/* ===== Admin ===== */}
         <Route
           path="/admin"
           element={
@@ -140,6 +139,7 @@ export default function App() {
           }
         />
 
+        {/* ✅ โปรไฟล์ของฉัน */}
         <Route
           path="/profile"
           element={
@@ -149,6 +149,10 @@ export default function App() {
           }
         />
 
+        {/* ✅ โปรไฟล์สาธารณะ: ตาม id */}
+        <Route path="/users/:id" element={<Profile />} />
+
+        {/* ✅ โปรไฟล์สาธารณะ: ตาม username (ของเดิม) */}
         <Route path="/@:username" element={<Profile />} />
 
         <Route

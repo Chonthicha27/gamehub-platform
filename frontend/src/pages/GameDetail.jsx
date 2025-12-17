@@ -405,7 +405,11 @@ export default function GameDetail() {
   const coverSrc = safeImgSrc(game.coverUrl, FALLBACK_COVER_DATA);
 
   const isFavorited = !!(me?.favorites || []).find((gid) => String(gid) === String(id));
-  const uploader = game.uploader && typeof game.uploader === "object" ? game.uploader : null;
+
+  // ✅ สำคัญ: รองรับ uploader เป็น object หรือ string id
+  const uploaderObj = game.uploader && typeof game.uploader === "object" ? game.uploader : null;
+  const uploaderId = String((uploaderObj?._id || game.uploader || "") ?? "");
+  const uploader = uploaderObj; // ใช้เหมือนเดิม (ไม่ให้โค้ดส่วนอื่นพัง)
 
   const onDelete = async () => {
     if (!confirm("ลบเกมนี้ถาวรใช่ไหม?")) return;
@@ -717,14 +721,14 @@ export default function GameDetail() {
                 {uploader && (
                   <span className="gd-meta-piece">
                     by{" "}
-                    <Link to="/profile" className="gd-author">
+                    <Link to={`/users/${uploaderId}`} className="gd-author">
                       <Img
                         src={uploader.avatarUrl || uploader.avatar || uploader.photoURL || ""}
                         alt="u"
                         className="gd-author__avatar"
                         fallback={FALLBACK_AVATAR_DATA}
                       />
-                      {uploader.username || uploader.name || "unknown"}
+                      {uploader.displayName || uploader.username || uploader.name || "unknown"}
                     </Link>
                   </span>
                 )}

@@ -21,19 +21,19 @@ function getAuthedUserId(req) {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET || "devsecret");
-    return payload?.uid
-      ? String(payload.uid)
-      : payload?.id
-      ? String(payload.id)
-      : null;
+    return payload?.uid ? String(payload.uid) : payload?.id ? String(payload.id) : null;
   } catch {
     return null;
   }
 }
 
-// ✅ เพิ่ม role / status / emailVerified เข้า projection ด้วย
+// ✅ สำหรับหน้า "ของฉัน" (มีข้อมูลมากกว่า)
 const USER_SAFE_PROJECTION =
   "_id username email githubId googleId displayName bio avatarUrl bannerUrl links favorites role status emailVerified createdAt updatedAt";
+
+// ✅ สำหรับหน้า "สาธารณะ" (ตัด email / ids ทิ้ง)
+const USER_PUBLIC_PROJECTION =
+  "_id username displayName bio avatarUrl bannerUrl links role status createdAt updatedAt";
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -65,12 +65,12 @@ const uploadBanner = multer({ storage: bannerStorage, ...multerOpts });
 
 function filePathToUrl(fp) {
   const rel = fp.replace(process.cwd(), "").replace(/\\/g, "/");
-  return rel.startsWith("/") ? rel : `/${rel}`; // => /uploads/avatars/xxx.jpg
+  return rel.startsWith("/") ? rel : `/${rel}`;
 }
 
 // ---------------- routes ----------------
 
-// ✅ ส่งข้อมูล user + role + isAdmin
+// ✅ ของฉัน (ต้อง login)
 router.get("/me", async (req, res) => {
   try {
     const uid = getAuthedUserId(req);
@@ -79,11 +79,42 @@ router.get("/me", async (req, res) => {
     const u = await User.findById(uid).select(USER_SAFE_PROJECTION);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    // ใช้ toJSON() เพื่อให้ virtuals (เช่น isAdmin) ถูกใส่มาด้วย
     return res.json(u.toJSON());
   } catch (e) {
     console.error("GET /users/me", e);
     return res.status(401).json({ message: "unauthenticated" });
+  }
+});
+
+// ✅ public by username: /api/users/by-username/:username
+router.get("/by-username/:username", async (req, res) => {
+  try {
+    const username = String(req.params.username || "").trim();
+    if (!username) return res.status(400).json({ message: "username required" });
+
+    const u = await User.findOne({ username }).select(USER_PUBLIC_PROJECTION);
+    if (!u) return res.status(404).json({ message: "user not found" });
+
+    return res.json(u.toJSON());
+  } catch (e) {
+    console.error("GET /users/by-username/:username", e);
+    return res.status(500).json({ message: "failed" });
+  }
+});
+
+// ✅ public by id: /api/users/:id  (อันนี้คือที่หน้าเว็บคุณเรียกอยู่)
+router.get("/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ message: "id required" });
+
+    const u = await User.findById(id).select(USER_PUBLIC_PROJECTION);
+    if (!u) return res.status(404).json({ message: "user not found" });
+
+    return res.json(u.toJSON());
+  } catch (e) {
+    console.error("GET /users/:id", e);
+    return res.status(404).json({ message: "user not found" });
   }
 });
 
@@ -96,33 +127,15 @@ router.put("/me", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    if (typeof username === "string" && username.trim())
-      u.username = username.trim();
-    if (typeof displayName === "string")
-      u.displayName = displayName.trim();
+    if (typeof username === "string" && username.trim()) u.username = username.trim();
+    if (typeof displayName === "string") u.displayName = displayName.trim();
     if (typeof bio === "string") u.bio = bio.trim();
 
     const links = {
-      website:
-        req.body.website ??
-        req.body?.links?.website ??
-        u.links?.website ??
-        "",
-      twitter:
-        req.body.twitter ??
-        req.body?.links?.twitter ??
-        u.links?.twitter ??
-        "",
-      youtube:
-        req.body.youtube ??
-        req.body?.links?.youtube ??
-        u.links?.youtube ??
-        "",
-      github:
-        req.body.github ??
-        req.body?.links?.github ??
-        u.links?.github ??
-        "",
+      website: req.body.website ?? req.body?.links?.website ?? u.links?.website ?? "",
+      twitter: req.body.twitter ?? req.body?.links?.twitter ?? u.links?.twitter ?? "",
+      youtube: req.body.youtube ?? req.body?.links?.youtube ?? u.links?.youtube ?? "",
+      github: req.body.github ?? req.body?.links?.github ?? u.links?.github ?? "",
     };
     u.links = links;
 
@@ -138,55 +151,44 @@ router.put("/me", async (req, res) => {
   }
 });
 
-router.post(
-  "/me/avatar",
-  uploadAvatar.single("avatar"),
-  async (req, res) => {
-    try {
-      const uid = getAuthedUserId(req);
-      if (!uid) return res.status(401).json({ message: "unauthenticated" });
-      if (!req.file)
-        return res.status(400).json({ message: "no file" });
+router.post("/me/avatar", uploadAvatar.single("avatar"), async (req, res) => {
+  try {
+    const uid = getAuthedUserId(req);
+    if (!uid) return res.status(401).json({ message: "unauthenticated" });
+    if (!req.file) return res.status(400).json({ message: "no file" });
 
-      const u = await User.findById(uid);
-      if (!u) return res.status(404).json({ message: "user not found" });
+    const u = await User.findById(uid);
+    if (!u) return res.status(404).json({ message: "user not found" });
 
-      u.avatarUrl = filePathToUrl(req.file.path);
-      await u.save();
-      return res.json({ avatarUrl: u.avatarUrl });
-    } catch (e) {
-      console.error("POST /users/me/avatar", e);
-      return res.status(400).json({ message: "upload failed" });
-    }
+    u.avatarUrl = filePathToUrl(req.file.path);
+    await u.save();
+    return res.json({ avatarUrl: u.avatarUrl });
+  } catch (e) {
+    console.error("POST /users/me/avatar", e);
+    return res.status(400).json({ message: "upload failed" });
   }
-);
+});
 
-router.post(
-  "/me/banner",
-  uploadBanner.single("banner"),
-  async (req, res) => {
-    try {
-      const uid = getAuthedUserId(req);
-      if (!uid) return res.status(401).json({ message: "unauthenticated" });
-      if (!req.file)
-        return res.status(400).json({ message: "no file" });
+router.post("/me/banner", uploadBanner.single("banner"), async (req, res) => {
+  try {
+    const uid = getAuthedUserId(req);
+    if (!uid) return res.status(401).json({ message: "unauthenticated" });
+    if (!req.file) return res.status(400).json({ message: "no file" });
 
-      const u = await User.findById(uid);
-      if (!u) return res.status(404).json({ message: "user not found" });
+    const u = await User.findById(uid);
+    if (!u) return res.status(404).json({ message: "user not found" });
 
-      u.bannerUrl = filePathToUrl(req.file.path);
-      await u.save();
-      return res.json({ bannerUrl: u.bannerUrl });
-    } catch (e) {
-      console.error("POST /users/me/banner", e);
-      return res.status(400).json({ message: "upload failed" });
-    }
+    u.bannerUrl = filePathToUrl(req.file.path);
+    await u.save();
+    return res.json({ bannerUrl: u.bannerUrl });
+  } catch (e) {
+    console.error("POST /users/me/banner", e);
+    return res.status(400).json({ message: "upload failed" });
   }
-);
+});
 
 /* ===== FAVORITES ===== */
 
-// GET รายการเกมโปรด (populate เกม)
 router.get("/me/favorites", async (req, res) => {
   try {
     const uid = getAuthedUserId(req);
@@ -204,7 +206,6 @@ router.get("/me/favorites", async (req, res) => {
   }
 });
 
-// POST เพิ่มเกมเข้า favorites
 router.post("/me/favorites/:gameId", async (req, res) => {
   try {
     const uid = getAuthedUserId(req);
@@ -213,9 +214,7 @@ router.post("/me/favorites/:gameId", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    const already = (u.favorites || []).some(
-      (id) => String(id) === String(gameId)
-    );
+    const already = (u.favorites || []).some((id) => String(id) === String(gameId));
     if (!already) {
       u.favorites = [...(u.favorites || []), gameId];
       await u.save();
@@ -227,7 +226,6 @@ router.post("/me/favorites/:gameId", async (req, res) => {
   }
 });
 
-// DELETE เอาเกมออกจาก favorites
 router.delete("/me/favorites/:gameId", async (req, res) => {
   try {
     const uid = getAuthedUserId(req);
@@ -236,9 +234,7 @@ router.delete("/me/favorites/:gameId", async (req, res) => {
     const u = await User.findById(uid);
     if (!u) return res.status(404).json({ message: "user not found" });
 
-    u.favorites = (u.favorites || []).filter(
-      (id) => String(id) !== String(gameId)
-    );
+    u.favorites = (u.favorites || []).filter((id) => String(id) !== String(gameId));
     await u.save();
     return res.json({ ok: true });
   } catch (e) {
