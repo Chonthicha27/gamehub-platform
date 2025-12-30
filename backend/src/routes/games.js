@@ -62,7 +62,10 @@ function initFirebaseBucket() {
   try {
     serviceAccountObj = JSON.parse(FIREBASE_SERVICE_ACCOUNT);
   } catch (err) {
-    console.error("[games] parse FIREBASE_SERVICE_ACCOUNT failed:", err.message || err);
+    console.error(
+      "[games] parse FIREBASE_SERVICE_ACCOUNT failed:",
+      err.message || err
+    );
     return null;
   }
 
@@ -106,7 +109,10 @@ function authRequired(req, res, next) {
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) {
     try {
-      const payload = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      const payload = jwt.verify(
+        h.slice(7),
+        process.env.JWT_SECRET || "devsecret"
+      );
       req.user = { _id: String(payload.id || payload.uid), role: payload.role };
       return next();
     } catch {}
@@ -129,7 +135,10 @@ function readOptionalUser(req, _res, next) {
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) {
     try {
-      const payload = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      const payload = jwt.verify(
+        h.slice(7),
+        process.env.JWT_SECRET || "devsecret"
+      );
       req.user = { _id: String(payload.id || payload.uid), role: payload.role };
     } catch {}
   }
@@ -196,6 +205,33 @@ async function rmrf(dir) {
   } catch {}
 }
 
+/* ===== Tags helpers (FIX) =====
+   - รับได้ทั้ง tags[] (FormData) และ tags (string "a,b,c")
+   - normalize: trim, lowercase, unique, max 10
+*/
+function parseTagsAny(b) {
+  const raw = typeof b["tags[]"] !== "undefined" ? b["tags[]"] : b.tags;
+
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    return raw
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeTags(tags) {
+  return Array.from(
+    new Set(
+      (tags || [])
+        .map((t) => String(t || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ).slice(0, 10);
+}
+
 /* ===== Firebase helpers ===== */
 
 function guessContentType(filePath) {
@@ -215,7 +251,9 @@ function guessContentType(filePath) {
 function getFirebasePublicUrl(key) {
   const cleanKey = key.replace(/^\/+/, "");
   if (!FIREBASE_STORAGE_BUCKET) return null;
-  return `https://storage.googleapis.com/${FIREBASE_STORAGE_BUCKET}/${encodeURI(cleanKey)}`;
+  return `https://storage.googleapis.com/${FIREBASE_STORAGE_BUCKET}/${encodeURI(
+    cleanKey
+  )}`;
 }
 
 /**
@@ -352,7 +390,7 @@ async function recomputeRatings(gameId) {
 // คืนค่า key สำหรับเดือนปัจจุบัน "YYYY-MM"
 function getCurrentMonthKey() {
   const now = new Date();
-  return now.toISOString().slice(0, 7); // "2025-11"
+  return now.toISOString().slice(0, 7);
 }
 
 /* ===== Access Control (NEW) ===== */
@@ -370,7 +408,10 @@ function isAdminUser(req) {
  * - suspended: owner/admin เท่านั้น (คนอื่น 404)
  */
 async function loadGameForRead(req, gameId) {
-  const g = await Game.findById(gameId).populate("uploader", "username avatarUrl role");
+  const g = await Game.findById(gameId).populate(
+    "uploader",
+    "username avatarUrl role"
+  );
   if (!g) return { game: null, allowed: false };
 
   const meId = req.user?._id ? String(req.user._id) : null;
@@ -587,19 +628,21 @@ router.post(
       const kind = b.kind === "download" ? "download" : "html";
       const tagline = b.tagline || "";
       const description = b.description || "";
-
       const category = b.category || "no-genre";
 
       const visPack = normalizeVisibilityForSave(req, b.visibility);
 
-      const tags = Array.isArray(b["tags[]"])
-        ? b["tags[]"]
-        : b["tags[]"]
-        ? [b["tags[]"]]
-        : [];
+      // ✅ FIX: tags รับได้ทั้ง tags[] และ tags="a,b,c" แล้ว normalize
+      const tags = normalizeTags(parseTagsAny(b));
 
-      // ✅ FIX: รับ videoUrl (และรองรับชื่อเก่า trailerUrl เผื่อมีข้อมูลเดิม)
+      // ✅ FIX: รับ videoUrl (รองรับ trailerUrl เผื่อมีข้อมูลเดิม)
       const videoUrl = String(b.videoUrl || b.trailerUrl || "").trim();
+
+      // ✅ NEW: รับ commentsEnabled (FormData มักเป็น string)
+      const commentsEnabled =
+        typeof b.commentsEnabled === "undefined"
+          ? true
+          : String(b.commentsEnabled).trim().toLowerCase() === "true";
 
       const file = req.files?.file?.[0];
       if (!file) return res.status(400).json({ message: "กรุณาแนบไฟล์เกม" });
@@ -742,16 +785,17 @@ router.post(
         screens,
         kind,
         uploader: req.user?._id,
-
-        // ✅ FIX: บันทึก videoUrl ลงเกม
         videoUrl,
+        commentsEnabled,
       });
 
       return res.json(doc);
     } catch (err) {
       console.error("[games.create]", err);
       if (err?.code === 11000)
-        return res.status(400).json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
+        return res
+          .status(400)
+          .json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
       return res.status(500).json({ message: err.message || "Upload failed" });
     }
   }
@@ -791,13 +835,13 @@ router.put(
         description: b.description ?? game.description,
         category: b.category ?? game.category,
 
-        tags: Array.isArray(b["tags[]"])
-          ? b["tags[]"]
-          : b["tags[]"]
-          ? [b["tags[]"]]
-          : Array.isArray(game.tags)
-          ? game.tags
-          : [],
+        // ✅ FIX: ถ้ามีส่ง tags/tags[] มา -> parse+normalize, ถ้าไม่ส่ง -> ใช้ของเดิม
+        tags:
+          typeof b["tags[]"] !== "undefined" || typeof b.tags !== "undefined"
+            ? normalizeTags(parseTagsAny(b))
+            : Array.isArray(game.tags)
+            ? game.tags
+            : [],
 
         kind:
           b.kind === "download"
@@ -810,8 +854,7 @@ router.put(
         requestedVisibility: game.requestedVisibility || "",
         visibilityRequestedAt: game.visibilityRequestedAt || null,
 
-        // ✅ FIX: อัปเดต videoUrl (รองรับ trailerUrl)
-        // - ถ้าส่งมาเป็น "" จะเคลียร์ได้
+        // ✅ FIX: อัปเดต videoUrl (รองรับ trailerUrl) / ส่ง "" มาเพื่อเคลียร์ได้
         videoUrl:
           typeof b.videoUrl !== "undefined"
             ? String(b.videoUrl || "").trim()
@@ -819,6 +862,14 @@ router.put(
             ? String(b.trailerUrl || "").trim()
             : game.videoUrl || "",
       };
+
+      // ✅ NEW: อัปเดต commentsEnabled ถ้ามีส่งมา
+      if (typeof b.commentsEnabled !== "undefined") {
+        toUpdate.commentsEnabled =
+          String(b.commentsEnabled).trim().toLowerCase() === "true";
+      } else {
+        toUpdate.commentsEnabled = game.commentsEnabled !== false;
+      }
 
       if (typeof b.visibility !== "undefined") {
         const visPack = normalizeVisibilityForSave(req, b.visibility);
@@ -845,7 +896,11 @@ router.put(
           if (/\.html?$/i.test(file.originalname)) {
             if (useFirebase) {
               const key = `${keyPrefix}/index.html`;
-              toUpdate.fileUrl = await uploadToFirebase(file.path, key, "text/html");
+              toUpdate.fileUrl = await uploadToFirebase(
+                file.path,
+                key,
+                "text/html"
+              );
             } else {
               const dest = path.join(gameDir, "index.html");
               await moveFile(file.path, dest);
@@ -894,7 +949,9 @@ router.put(
         } else {
           if (!/\.rar$/i.test(file.originalname)) {
             await safeUnlink(file.path);
-            return res.status(400).json({ message: "โหมด Downloadable รองรับ .rar เท่านั้น" });
+            return res
+              .status(400)
+              .json({ message: "โหมด Downloadable รองรับ .rar เท่านั้น" });
           }
 
           if (useFirebase) {
@@ -959,7 +1016,9 @@ router.put(
     } catch (err) {
       console.error("[games.update]", err);
       if (err?.code === 11000)
-        return res.status(400).json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
+        return res
+          .status(400)
+          .json({ message: "Slug นี้ถูกใช้แล้ว เลือกคำอื่นนะ" });
       return res.status(500).json({ message: err.message || "Save failed" });
     }
   }
@@ -967,17 +1026,22 @@ router.put(
 
 /* ===== READ ===== */
 
+// ✅ SEARCH (public only)
 router.get("/search", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
     const category = String(req.query.category || "").trim();
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "24", 10), 1), 60);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "24", 10), 1),
+      60
+    );
 
     const cond = {};
     if (q) {
       const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      cond.$or = [{ title: rx }, { description: rx }];
+      // ✅ FIX: ค้นได้ทั้ง title/description/tagline/tags
+      cond.$or = [{ title: rx }, { description: rx }, { tagline: rx }, { tags: rx }];
     }
     if (category && category !== "all") cond.category = category;
 
@@ -1032,23 +1096,29 @@ router.get("/", readOptionalUser, async (req, res) => {
 
 /* ✅ COMMENTS (NEW): ต้องมาก่อน router.get("/:id") */
 
-// GET comments ของเกม (รวม replies)
+// GET comments ของเกม
 router.get("/:id/comments", readOptionalUser, async (req, res) => {
   try {
-    if (!Comment) return res.status(500).json({ message: "Comments feature not configured" });
+    if (!Comment)
+      return res.status(500).json({ message: "Comments feature not configured" });
 
-    const { game, allowed, isAdmin } = await loadGameForRead(req, req.params.id);
+    const { game, allowed, isAdmin, isOwner } = await loadGameForRead(
+      req,
+      req.params.id
+    );
     if (!game || !allowed) return res.status(404).json({ message: "Not found" });
 
-    // คนทั่วไปเห็นเฉพาะ visible
-    // แอดมินเห็น visible + hidden (แต่ไม่เอา deleted)
+    const commentsEnabled = game.commentsEnabled !== false;
+    if (!commentsEnabled && !isAdmin && !isOwner) {
+      return res.status(403).json({ message: "Comments are disabled for this game" });
+    }
+
     const cond = {
       game: req.params.id,
       status: isAdmin ? { $in: ["visible", "hidden"] } : "visible",
     };
 
     const items = await Comment.find(cond)
-      // ✅ FIX: เพิ่ม photoURL + name ให้เหมือนรีวิว/หน้าอื่น ๆ (ไม่กระทบของเดิม)
       .populate("author", "username name avatar avatarUrl photoURL")
       .sort({ createdAt: 1 })
       .lean();
@@ -1060,27 +1130,33 @@ router.get("/:id/comments", readOptionalUser, async (req, res) => {
   }
 });
 
-// POST comment / reply (ทุกคนตอบได้ แค่ต้อง login)
+// POST comment / reply
 router.post("/:id/comments", authRequired, async (req, res) => {
   try {
-    if (!Comment) return res.status(500).json({ message: "Comments feature not configured" });
+    if (!Comment)
+      return res.status(500).json({ message: "Comments feature not configured" });
 
     const { game, allowed } = await loadGameForRead(req, req.params.id);
     if (!game || !allowed) return res.status(404).json({ message: "Not found" });
 
+    const commentsEnabled = game.commentsEnabled !== false;
+    if (!commentsEnabled) {
+      return res.status(403).json({ message: "Comments are disabled for this game" });
+    }
+
     const content = String(req.body?.content || "").trim();
     const parentIdRaw = req.body?.parentId || null;
-
     if (!content) return res.status(400).json({ message: "content required" });
 
-    // ถ้ามี parentId ต้องเป็นคอมเมนต์ของเกมเดียวกัน + ต้องไม่ใช่ deleted
     let parentId = null;
     if (parentIdRaw) {
       const parent = await Comment.findOne({
         _id: parentIdRaw,
         game: req.params.id,
         status: { $ne: "deleted" },
-      }).select("_id").lean();
+      })
+        .select("_id")
+        .lean();
 
       if (!parent) return res.status(400).json({ message: "parent comment not found" });
       parentId = parent._id;
@@ -1095,7 +1171,6 @@ router.post("/:id/comments", authRequired, async (req, res) => {
     });
 
     const populated = await Comment.findById(created._id)
-      // ✅ FIX: เพิ่ม photoURL + name เช่นกัน
       .populate("author", "username name avatar avatarUrl photoURL")
       .lean();
 
@@ -1106,10 +1181,11 @@ router.post("/:id/comments", authRequired, async (req, res) => {
   }
 });
 
-// ✅ DELETE comment ของตัวเอง (soft delete)
+// DELETE comment ของตัวเอง (soft delete)
 router.delete("/:id/comments/:cid", authRequired, async (req, res) => {
   try {
-    if (!Comment) return res.status(500).json({ message: "Comments feature not configured" });
+    if (!Comment)
+      return res.status(500).json({ message: "Comments feature not configured" });
 
     const { game, allowed, isAdmin } = await loadGameForRead(req, req.params.id);
     if (!game || !allowed) return res.status(404).json({ message: "Not found" });
@@ -1120,8 +1196,6 @@ router.delete("/:id/comments/:cid", authRequired, async (req, res) => {
     const isMine = String(c.author) === String(req.user?._id || "");
     if (!isMine && !isAdmin) return res.status(403).json({ message: "Forbidden" });
 
-    // ✅ FIX: ห้ามตั้ง content = "" เพราะ schema ส่วนใหญ่ตั้ง required -> จะ validation fail (500)
-    // แค่ soft delete ด้วย status ก็พอ เพราะ GET ไม่ดึง deleted อยู่แล้ว
     c.status = "deleted";
     await c.save({ validateBeforeSave: false });
 
@@ -1132,7 +1206,7 @@ router.delete("/:id/comments/:cid", authRequired, async (req, res) => {
   }
 });
 
-// ✅ Detail: private/review/suspended กันคนอื่น (404)
+// Detail: private/review/suspended กันคนอื่น (404)
 router.get("/:id", readOptionalUser, async (req, res) => {
   const { game, allowed } = await loadGameForRead(req, req.params.id);
   if (!game || !allowed) return res.status(404).json({ message: "Not found" });
@@ -1226,7 +1300,9 @@ router.delete("/:id/reviews/:rid", authRequired, async (req, res) => {
 
 router.post("/:id/monthly-vote", authRequired, async (req, res) => {
   if (!MonthlyVote) {
-    return res.status(500).json({ message: "Monthly vote feature not configured" });
+    return res
+      .status(500)
+      .json({ message: "Monthly vote feature not configured" });
   }
 
   try {
@@ -1267,7 +1343,9 @@ router.post("/:id/monthly-vote", authRequired, async (req, res) => {
 
 router.get("/:id/monthly-vote/me", authRequired, async (req, res) => {
   if (!MonthlyVote) {
-    return res.status(500).json({ message: "Monthly vote feature not configured" });
+    return res
+      .status(500)
+      .json({ message: "Monthly vote feature not configured" });
   }
 
   try {
@@ -1299,7 +1377,9 @@ router.get("/:id/monthly-vote/me", authRequired, async (req, res) => {
 
 router.get("/:id/monthly-vote-count", async (req, res) => {
   if (!MonthlyVote) {
-    return res.status(500).json({ message: "Monthly vote feature not configured" });
+    return res
+      .status(500)
+      .json({ message: "Monthly vote feature not configured" });
   }
 
   try {
@@ -1340,7 +1420,6 @@ router.delete("/:id", authRequired, async (req, res) => {
       deletes.push(MonthlyVote.deleteMany({ game: game._id }));
     }
 
-    // ✅ ลบคอมเมนต์ด้วย
     if (Comment) {
       deletes.push(Comment.deleteMany({ game: game._id }));
     }
@@ -1352,7 +1431,10 @@ router.delete("/:id", authRequired, async (req, res) => {
         const prefix = `${FIREBASE_KEY_PREFIX}/${gameId}/`;
         deletes.push(
           deletePrefixFromFirebase(prefix).catch((e) =>
-            console.warn("[games.delete] Firebase deletePrefix failed:", e.message || e)
+            console.warn(
+              "[games.delete] Firebase deletePrefix failed:",
+              e.message || e
+            )
           )
         );
       }

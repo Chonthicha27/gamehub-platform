@@ -42,6 +42,12 @@ const GameSchema = new mongoose.Schema(
     fileUrl: { type: String, required: true },
     screens: [{ type: String, default: [] }],
     videoUrl: { type: String, default: "" },
+    trailerUrl: { type: String, default: "" },
+
+    // ===== Community (NEW) =====
+    // true = แสดงคอมเมนต์ / false = ปิดคอมเมนต์
+    commentsEnabled: { type: Boolean, default: true },
+
     // โหมดไฟล์
     kind: { type: String, enum: ["html", "download"], default: "html" },
 
@@ -99,5 +105,8 @@ GameSchema.index({ createdAt: -1 });
 GameSchema.index({ category: 1 });
 GameSchema.index({ playsCount: -1 });
 GameSchema.index({ downloadsCount: -1 });
+
+/** ✅ NEW: index tags for faster tag search */
+GameSchema.index({ tags: 1 });
 
 module.exports = mongoose.model("Game", GameSchema);
