@@ -15,7 +15,7 @@ import EditGame from "./pages/EditGame";
 import SearchResults from "./pages/SearchResults";
 import Favorites from "./pages/Favorites";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
-
+import PreviewGame from "./pages/PreviewGame";
 // ลืมรหัสผ่าน
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
@@ -94,7 +94,7 @@ export default function App() {
         />
 
         <Route path="/search" element={<SearchResults />} />
-
+        <Route path="/preview" element={<PreviewGame />} />
         {/* ลืมรหัสผ่าน / ตั้งรหัสผ่านใหม่ */}
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />

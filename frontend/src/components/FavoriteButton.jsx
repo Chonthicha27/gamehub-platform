@@ -1,12 +1,15 @@
+// frontend/src/components/FavoriteButton.jsx
 import { useEffect, useState } from "react";
 import api from "../api/axios";
 
-/** ปุ่ม Toggle Favorite */
+/** Toggle Favorites */
 export default function FavoriteButton({ gameId, authed, initialFavorited }) {
   const [saving, setSaving] = useState(false);
   const [fav, setFav] = useState(!!initialFavorited);
 
-  useEffect(() => { setFav(!!initialFavorited); }, [initialFavorited]);
+  useEffect(() => {
+    setFav(!!initialFavorited);
+  }, [initialFavorited]);
 
   const toggle = async () => {
     if (!authed || !gameId || saving) return;
@@ -26,14 +29,23 @@ export default function FavoriteButton({ gameId, authed, initialFavorited }) {
     }
   };
 
+  const titleText = !authed
+    ? "Log in to use Favorites"
+    : fav
+    ? "Remove from Favorites"
+    : "Add to Favorites";
+
   return (
     <button
       className={`pfx-chip ${fav ? "pfx-chip--primary" : ""}`}
       onClick={toggle}
       disabled={!authed || saving}
-      title={authed ? (fav ? "Remove from favorites" : "Save to favorites") : "Log in to use favorites"}
+      title={titleText}
+      aria-pressed={fav}
+      aria-label={fav ? "Remove from Favorites" : "Add to Favorites"}
+      type="button"
     >
-      {fav ? "★ Favorited" : "☆ Save"}
+      {fav ? "★ In Favorites" : "☆ Add to Favorites"}
     </button>
   );
 }

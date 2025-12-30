@@ -1,63 +1,104 @@
 // frontend/src/pages/EditGame.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/axios";
 import { cdn } from "../api/cdn";
 
-/** ใช้ชุดหมวดเดียวกับ UploadGame */
+/** Main categories (match UploadGame UI) */
 const CATEGORIES = [
-  { id: "no-genre", name: "No genre" },
-  { id: "action", name: "Action" },
-  { id: "adventure", name: "Adventure" },
-  { id: "card-game", name: "Card Game" },
-  { id: "educational", name: "Educational" },
-  { id: "fighting", name: "Fighting" },
-  { id: "interactive-fiction", name: "Interactive Fiction" },
-  { id: "platformer", name: "Platformer" },
-  { id: "puzzle", name: "Puzzle" },
-  { id: "racing", name: "Racing" },
-  { id: "rhythm", name: "Rhythm" },
-  { id: "role-playing", name: "Role Playing" },
-  { id: "shooter", name: "Shooter" },
-  { id: "simulation", name: "Simulation" },
-  { id: "sports", name: "Sports" },
-  { id: "strategy", name: "Strategy" },
-  { id: "survival", name: "Survival" },
-  { id: "visual-novel", name: "Visual Novel" },
-  { id: "other", name: "Other" },
+  { id: "no-genre", name: "No genre", emoji: "—", color: "#9ca3af" },
+  { id: "action", name: "Action", emoji: "🗡️", color: "#f97373" },
+  { id: "adventure", name: "Adventure", emoji: "🧭", color: "#38bdf8" },
+  { id: "card-game", name: "Card Game", emoji: "🃏", color: "#fb7185" },
+  { id: "educational", name: "Educational", emoji: "📚", color: "#4ade80" },
+  { id: "fighting", name: "Fighting", emoji: "⚔️", color: "#f97316" },
+  { id: "interactive-fiction", name: "Interactive Fiction", emoji: "📖", color: "#a855f7" },
+  { id: "platformer", name: "Platformer", emoji: "🕹️", color: "#22c55e" },
+  { id: "puzzle", name: "Puzzle", emoji: "🧩", color: "#60a5fa" },
+  { id: "racing", name: "Racing", emoji: "🏎️", color: "#facc15" },
+  { id: "rhythm", name: "Rhythm", emoji: "🎵", color: "#f472b6" },
+  { id: "role-playing", name: "Role Playing", emoji: "🧙‍♂️", color: "#0ea5e9" },
+  { id: "shooter", name: "Shooter", emoji: "🎯", color: "#fb923c" },
+  { id: "simulation", name: "Simulation", emoji: "🏡", color: "#34d399" },
+  { id: "sports", name: "Sports", emoji: "🏀", color: "#a3e635" },
+  { id: "strategy", name: "Strategy", emoji: "♟️", color: "#22d3ee" },
+  { id: "survival", name: "Survival", emoji: "🪓", color: "#f97373" },
+  { id: "visual-novel", name: "Visual Novel", emoji: "💬", color: "#c4b5fd" },
+  { id: "other", name: "Other", emoji: "✨", color: "#9ca3af" },
 ];
 
 const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u || ""));
 const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
 const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
 
+/** Resize image with Canvas (keeps aspect ratio) */
+async function resizeImage(file, maxW = 1200, maxH = 675, mime = "image/jpeg", quality = 0.9) {
+  const bitmap = await createImageBitmap(file);
+  let { width, height } = bitmap;
+  const scale = Math.min(maxW / width, maxH / height, 1);
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return reject(new Error("Image convert failed (toBlob returned null)."));
+        resolve(
+          new File([blob], file.name.replace(/\.(png|webp)$/i, ".jpg"), {
+            type: mime,
+          })
+        );
+      },
+      mime,
+      quality
+    );
+  });
+}
+
 export default function EditGame() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  // me (ไว้ดู role)
+  // me (role)
   const [me, setMe] = useState(null);
 
-  // main fields
+  // ===== Basics (sent to backend) =====
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [tagline, setTagline] = useState("");
   const [description, setDescription] = useState("");
+
+  // category (sent to backend)
   const [category, setCategory] = useState("no-genre");
+  const [catOpen, setCatOpen] = useState(false);
 
-  // ✅ visibility
-  // visibility = ค่าจริงในระบบ (public/unlisted/private/review/suspended)
-  // requestedVisibility = คำขอ (เช่น "public" ตอนรออนุมัติ)
-  const [visibility, setVisibility] = useState("review");
+  // tags (sent to backend)
+  const [tags, setTags] = useState([]);
+  const [tagDraft, setTagDraft] = useState("");
+
+  // kind (sent to backend)
+  const [kind, setKind] = useState("html"); // 'html' | 'download'
+  const [kindOpen, setKindOpen] = useState(false); // ✅ make it same as UploadGame
+
+  // ✅ community UI state (but backend uses commentsEnabled)
+  const [communityMode, setCommunityMode] = useState("comments"); // off | comments
+
+  // visibility (source of truth from backend)
+  const [visibility, setVisibility] = useState("review"); // public | review | private | unlisted | suspended
   const [requestedVisibility, setRequestedVisibility] = useState("");
-
-  // ✅ ตัวเลือกที่ user เลือกใน UI (จะส่งไป backend)
+  // choice user selects (send to backend)
   const [visibilityChoice, setVisibilityChoice] = useState("review");
 
-  // ✅ kind เหมือน UploadGame
-  const [kind, setKind] = useState("html"); // "html" | "download"
+  // media
+  const [videoUrl, setVideoUrl] = useState("");
 
-  const [tags, setTags] = useState([]);
+  // existing assets
   const [coverUrl, setCoverUrl] = useState("");
   const [fileUrl, setFileUrl] = useState("");
   const [screens, setScreens] = useState([]);
@@ -67,18 +108,23 @@ export default function EditGame() {
   const [newCover, setNewCover] = useState(null);
   const [newScreens, setNewScreens] = useState([]);
 
-  // previews for newScreens (กัน memory leak)
-  const [newScreenPreviews, setNewScreenPreviews] = useState([]);
+  // previews
+  const [coverPreview, setCoverPreview] = useState("");
+  const [screenPreviews, setScreenPreviews] = useState([]);
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [note, setNote] = useState("");
+  // ui
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [msg, setMsg] = useState("");
 
-  // refs (optional)
+  const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
   const screensInputRef = useRef(null);
 
+  const isAdmin = me?.role === "admin";
+
+  // ===== load me =====
   useEffect(() => {
-    // load me
     (async () => {
       try {
         const u = await api.get("/users/me");
@@ -89,34 +135,31 @@ export default function EditGame() {
     })();
   }, []);
 
+  // ===== load game =====
   useEffect(() => {
-    // load game
     (async () => {
       try {
-        setError("");
-        setNote("");
+        setMsg("");
+        setProgress(0);
 
         const r = await api.get(`/games/${id}`);
-        const g = r.data;
+        const g = r.data || {};
 
         setTitle(g.title || "");
         setSlug(g.slug || "");
         setTagline(g.tagline || "");
         setDescription(g.description || "");
+
         setCategory(g.category || "no-genre");
 
         setVisibility(g.visibility || "review");
         setRequestedVisibility(g.requestedVisibility || "");
 
-        // ✅ ตั้งค่า choice ให้ user เห็น “สิ่งที่ควรเลือก”
-        // ถ้ากำลังรออนุมัติ (visibility=review + requestedVisibility=public) ให้โชว์ว่า user เลือก public อยู่
         const initialChoice =
-          g.visibility === "review" && g.requestedVisibility === "public"
-            ? "public"
-            : g.visibility || "review";
+          g.visibility === "review" && g.requestedVisibility === "public" ? "public" : g.visibility || "review";
         setVisibilityChoice(initialChoice);
 
-        // ✅ kind
+        // kind
         const inferredKind = g.kind || (isRarFile(g.fileUrl) ? "download" : "html");
         setKind(inferredKind);
 
@@ -124,462 +167,938 @@ export default function EditGame() {
         setCoverUrl(g.coverUrl || "");
         setFileUrl(g.fileUrl || "");
         setScreens(Array.isArray(g.screens) ? g.screens : []);
+
+        setVideoUrl(g.videoUrl || "");
+
+        // ✅ FIX: ใช้ commentsEnabled จาก backend เป็นตัวจริง
+        const enabled = g.commentsEnabled !== false;
+        setCommunityMode(enabled ? "comments" : "off");
       } catch (e) {
-        setError(e?.response?.data?.message || "Load failed");
+        setMsg(e?.response?.data?.message || "Load failed.");
       }
     })();
   }, [id]);
 
-  // preview newScreens
+  // ✅ when kind changes: clear selected upload file to avoid wrong extension
   useEffect(() => {
-    if (!newScreens.length) {
-      setNewScreenPreviews([]);
-      return;
-    }
+    setNewFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [kind]);
+
+  // ===== preview cover (new) =====
+  useEffect(() => {
+    if (!newCover) return setCoverPreview("");
+    const url = URL.createObjectURL(newCover);
+    setCoverPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [newCover]);
+
+  // ===== preview screenshots (new) =====
+  useEffect(() => {
+    if (!newScreens.length) return setScreenPreviews([]);
     const urls = newScreens.map((f) => URL.createObjectURL(f));
-    setNewScreenPreviews(urls);
+    setScreenPreviews(urls);
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [newScreens]);
 
-  const isAdmin = me?.role === "admin";
+  const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
 
-  // accept ชนิดไฟล์ตาม kind (เหมือน UploadGame)
-  const acceptForKind = kind === "html" ? ".html,.htm,.zip" : ".rar";
-
-  const onTagsKey = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const v = e.currentTarget.value.trim().toLowerCase();
-      if (!v) return;
-      if (!tags.includes(v)) setTags((x) => [...x, v].slice(0, 10));
-      e.currentTarget.value = "";
-    }
+  // tag helpers
+  const addTag = () => {
+    const t = tagDraft.trim().toLowerCase();
+    if (!t) return;
+    if (tags.includes(t)) return setTagDraft("");
+    setTags((x) => [...x, t].slice(0, 10));
+    setTagDraft("");
   };
   const removeTag = (t) => setTags((x) => x.filter((i) => i !== t));
 
-  const onPickScreens = (e) => {
+  // cover resize before upload
+  const onCoverChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return setNewCover(null);
+    try {
+      const resized = await resizeImage(file, 1200, 675, "image/jpeg", 0.9);
+      setNewCover(resized);
+    } catch (err) {
+      console.error(err);
+      setNewCover(null);
+      setMsg("Cover image could not be processed. Please try another image.");
+    }
+  };
+
+  // screenshots resize before upload
+  const onScreensChange = async (e) => {
     const files = Array.from(e.target.files || []).slice(0, 5);
-    setNewScreens(files);
+    const resized = [];
+    try {
+      for (const f of files) resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
+      setNewScreens(resized);
+    } catch (err) {
+      console.error(err);
+      setNewScreens([]);
+      setMsg("Screenshots could not be processed. Please try different images.");
+    }
   };
 
-  // ✅ เลือก visibility
-  const onSelectVisibility = (v) => {
-    setVisibilityChoice(v);
-    // ไม่ต้องไป set visibility ฝั่งจริงเอง ปล่อยให้ backend ตอบกลับมาเป็น source of truth
+  // accept by kind
+  const acceptForKind = kind === "html" ? ".html,.htm,.zip" : ".rar";
+
+  const openViewPage = () => nav(`/games/${id}`);
+
+  const resetUploads = () => {
+    setNewFile(null);
+    setNewCover(null);
+    setNewScreens([]);
+    setCoverPreview("");
+    setScreenPreviews([]);
+    setProgress(0);
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (coverInputRef.current) coverInputRef.current.value = "";
+    if (screensInputRef.current) screensInputRef.current.value = "";
   };
 
-  // ✅ playable / downloadOnly แบบเดียวกับหน้า GameDetail/Home
-  const downloadOnly = useMemo(
-    () => kind === "download" || isRarFile(fileUrl),
-    [kind, fileUrl]
-  );
+  // itch-like visibility radio mapping
+  const visChoice = useMemo(() => {
+    if (visibilityChoice === "unlisted") return "unlisted";
+    if (visibilityChoice === "review") return "draft";
+    if (visibilityChoice === "private") return "restricted";
+    if (visibilityChoice === "public") return "public";
+    return "restricted";
+  }, [visibilityChoice]);
 
+  const setVisByChoice = (choice) => {
+    if (choice === "draft") return setVisibilityChoice("review");
+    if (choice === "public") return setVisibilityChoice("public");
+    if (choice === "unlisted") return setVisibilityChoice("unlisted");
+    return setVisibilityChoice("private");
+  };
+
+  const pendingPublic = !isAdmin && visibility === "review" && requestedVisibility === "public";
+
+  const statusLabel = useMemo(() => {
+    if (visibility === "public") return "public";
+    if (visibility === "unlisted") return "unlisted";
+    if (visibility === "private") return "private";
+    if (visibility === "review") return pendingPublic ? "review (requested public)" : "review";
+    if (visibility === "suspended") return "suspended";
+    return String(visibility || "review");
+  }, [visibility, pendingPublic]);
+
+  // quick preview
+  const fileSrc = cdn(fileUrl);
+  const downloadOnly = useMemo(() => kind === "download" || isRarFile(fileUrl), [kind, fileUrl]);
   const playable = useMemo(() => {
     if (downloadOnly) return false;
     if (kind === "html") return true;
     return isHtmlFile(fileUrl) || isZipFile(fileUrl);
   }, [downloadOnly, kind, fileUrl]);
 
-  const categoryLabel =
-    CATEGORIES.find((c) => c.id === category)?.name || category || "no-genre";
+  // ✅ label for kind dropdown (same as UploadGame)
+  const kindLabel =
+    kind === "html"
+      ? "HTML — played in the browser (.html / .zip)"
+      : "Downloadable — files to be downloaded (.rar)";
 
-  const pendingPublic =
-    !isAdmin && visibility === "review" && requestedVisibility === "public";
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setMsg("");
+    if (busy) return;
 
-  const visibilityLabel = (() => {
-    if (visibility === "public") return "สาธารณะ";
-    if (visibility === "unlisted") return "Unlisted";
-    if (visibility === "private") return "Private";
-    if (visibility === "review") return pendingPublic ? "รอตรวจ (ขอ public)" : "รอตรวจ/ทดสอบ";
-    if (visibility === "suspended") return "ถูกระงับ";
-    return visibility;
-  })();
+    if (!title.trim()) return setMsg("Please enter a game title.");
 
-  const onSave = async () => {
-    setError("");
-    setNote("");
-    setSaving(true);
+    // validate new file (if user selected one)
+    if (newFile) {
+      if (kind === "html" && !/\.(html?|zip)$/i.test(newFile.name)) {
+        return setMsg("HTML mode supports only .html or .zip files.");
+      }
+      if (kind === "download" && !/\.rar$/i.test(newFile.name)) {
+        return setMsg("Downloadable mode supports only .rar files.");
+      }
+    }
+
+    setBusy(true);
+    setProgress(0);
 
     try {
       const fd = new FormData();
-      fd.append("title", title);
-      fd.append("slug", slug);
-      fd.append("tagline", tagline);
-      fd.append("description", description);
+      fd.append("title", title.trim());
+      fd.append("slug", slug || "");
+      fd.append("tagline", tagline || "");
+      fd.append("description", description || "");
       fd.append("category", category);
+      fd.append("kind", kind);
 
-      // ✅ ส่งค่า choice ไป backend ตรง ๆ
-      // backend จะบังคับเอง:
-      // - user เลือก public => visibility จริง = review + requestedVisibility=public
-      // - user เลือก private/unlisted/review => เซฟทันที + เคลียร์คำขอ
+      // ✅ ส่ง visibility ที่ user เลือก
       fd.append("visibility", visibilityChoice);
 
-      // ✅ kind
-      fd.append("kind", kind);
+      // ✅ FIX: ส่ง commentsEnabled ให้ตรง backend
+      fd.append("commentsEnabled", communityMode === "comments" ? "true" : "false");
+
+      // videoUrl
+      fd.append("videoUrl", String(videoUrl || "").trim());
 
       tags.forEach((t) => fd.append("tags[]", t));
 
-      if (newFile) fd.append("file", newFile);
+      // optional replacements
       if (newCover) fd.append("cover", newCover);
-      if (newScreens.length > 0) newScreens.forEach((f) => fd.append("screens[]", f));
+      if (newFile) fd.append("file", newFile);
+      if (newScreens.length) newScreens.forEach((f) => fd.append("screens[]", f));
+
+      const token = localStorage.getItem("token");
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
       const r = await api.put(`/games/${id}`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+        withCredentials: true,
+        headers: { ...authHeader },
+        onUploadProgress: (ev) => {
+          if (ev.total) setProgress(Math.round((ev.loaded * 100) / ev.total));
+        },
       });
 
-      const g = r.data;
+      const g = r?.data || {};
 
-      setNewFile(null);
-      setNewCover(null);
-      setNewScreens([]);
-      if (screensInputRef.current) screensInputRef.current.value = "";
-
+      // sync from backend
       setCoverUrl(g.coverUrl || "");
       setFileUrl(g.fileUrl || "");
       setScreens(Array.isArray(g.screens) ? g.screens : []);
 
-      // ✅ sync จาก backend
       setVisibility(g.visibility || "review");
       setRequestedVisibility(g.requestedVisibility || "");
 
-      // ✅ อัปเดต choice ให้ตรงสถานการณ์หลังเซฟ
       const newChoice =
-        g.visibility === "review" && g.requestedVisibility === "public"
-          ? "public"
-          : g.visibility || "review";
+        g.visibility === "review" && g.requestedVisibility === "public" ? "public" : g.visibility || "review";
       setVisibilityChoice(newChoice);
 
-      if (!isAdmin && g.visibility === "review" && g.requestedVisibility === "public") {
-        setNote("ส่งคำขอเป็นสาธารณะแล้ว ✅ ตอนนี้เกมยังอยู่สถานะรอตรวจ (review) จนกว่าแอดมินจะอนุมัติ");
-      } else {
-        setNote("บันทึกสำเร็จ ✅");
-      }
-    } catch (e) {
-      setError(e?.response?.data?.message || "Save failed");
+      setVideoUrl(g.videoUrl || videoUrl || "");
+
+      // ✅ sync community from backend
+      const enabled = g.commentsEnabled !== false;
+      setCommunityMode(enabled ? "comments" : "off");
+
+      resetUploads();
+
+      setMsg(
+        !isAdmin && g.visibility === "review" && g.requestedVisibility === "public"
+          ? "Submitted as Public ✅ Now pending admin approval (still in review)."
+          : "Saved successfully! ✅"
+      );
+    } catch (err) {
+      const code = err?.response?.status;
+      if (code === 401) setMsg("You are not logged in (Unauthorized). Please sign in first.");
+      else setMsg(err?.response?.data?.message || err.message || "Save failed.");
     } finally {
-      setSaving(false);
+      setBusy(false);
+      setTimeout(() => setProgress(0), 800);
     }
   };
-
-  const fileSrc = cdn(fileUrl);
 
   return (
     <div className="container section">
       <StyleLocal />
 
-      <div className="page-head">
-        <div>
-          <h1 className="h1">Edit: {title || "game"}</h1>
-          <div className="sub">
-            สถานะตอนนี้: <b>{visibilityLabel}</b>
-            {pendingPublic ? <span className="pending"> · pending public</span> : null}
-          </div>
-        </div>
-
-        <div className="head-actions">
-          <Link className="btn" to={`/games/${id}`}>
-            View page
-          </Link>
-        </div>
-      </div>
-
-      {error && <div className="alert">{error}</div>}
-      {note && <div className="note">{note}</div>}
-
-      <div className="edit-grid">
-        {/* ===== FORM ===== */}
-        <section className="card">
-          <div className="f">
-            <label>ชื่อเกม</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          <div className="f">
-            <label>Slug</label>
-            <div className="row">
-              <input value={slug} onChange={(e) => setSlug(e.target.value)} />
-              <button
-                className="btn"
-                type="button"
-                onClick={() =>
-                  setSlug(
-                    (title || "")
-                      .toLowerCase()
-                      .replace(/[^\w\s-]/g, "")
-                      .trim()
-                      .replace(/\s+/g, "-")
-                      .slice(0, 60)
-                  )
-                }
-              >
-                Auto
-              </button>
-            </div>
-            <small className="muted">URL: gpx.gg/{slug || "(slug)"}</small>
-          </div>
-
-          <div className="f">
-            <label>Tagline</label>
-            <input value={tagline} onChange={(e) => setTagline(e.target.value)} />
-          </div>
-
-          <div className="f">
-            <label>รายละเอียด</label>
-            <textarea
-              rows={7}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="row">
-            <div className="f">
-              <label>หมวดหมู่</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                {CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="f">
-              <label>Kind of project</label>
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="download">Downloadable — .rar</option>
-                <option value="html">HTML — .html / .zip (index.html)</option>
-              </select>
-              <small className="muted">
-                {kind === "html" ? "โหมดเล่นบนเว็บ (HTML/Zip)" : "โหมดดาวน์โหลด (RAR)"}
-              </small>
-            </div>
-          </div>
-
-          {/* ✅ Visibility (ครบ 4 ตัวเลือก) */}
-          <div className="f">
-            <label>การมองเห็น</label>
-
-            <div className="vis-row">
-              <button
-                type="button"
-                className={visibilityChoice === "private" ? "vis-pill vis-pill--active" : "vis-pill"}
-                onClick={() => onSelectVisibility("private")}
-              >
-                <span>🔒 Private</span>
-                <span className="vis-sub">เห็นเฉพาะคุณ/แอดมิน</span>
-              </button>
-
-              <button
-                type="button"
-                className={visibilityChoice === "unlisted" ? "vis-pill vis-pill--active" : "vis-pill"}
-                onClick={() => onSelectVisibility("unlisted")}
-              >
-                <span>🔗 Unlisted</span>
-                <span className="vis-sub">ไม่ขึ้น Home/Search แต่คนมีลิงก์เข้าได้</span>
-              </button>
-
-              <button
-                type="button"
-                className={visibilityChoice === "review" ? "vis-pill vis-pill--active" : "vis-pill"}
-                onClick={() => onSelectVisibility("review")}
-              >
-                <span>🕵️ Draft / Review</span>
-                <span className="vis-sub">เก็บไว้ทดสอบ/รอตรวจ (ไม่หลุด public)</span>
-              </button>
-
-              <button
-                type="button"
-                className={visibilityChoice === "public" ? "vis-pill vis-pill--active" : "vis-pill"}
-                onClick={() => onSelectVisibility("public")}
-              >
-                <span>🌐 Public</span>
-                <span className="vis-sub">
-                  {isAdmin ? "แอดมินเผยแพร่ได้ทันที" : "ส่งขออนุมัติก่อนเผยแพร่"}
-                </span>
-              </button>
-            </div>
-
-            {!isAdmin && visibilityChoice === "public" && (
-              <small className="muted">
-                * คุณเลือก “Public” แล้ว — หลังบันทึก เกมจะอยู่สถานะ <b>review</b> จนกว่าแอดมินอนุมัติ
-              </small>
-            )}
-          </div>
-
-          <div className="f">
-            <label>แท็ก (กด Enter เพื่อเพิ่ม)</label>
-            <input placeholder="platformer, roguelike..." onKeyDown={onTagsKey} />
-            <div className="tags">
-              {tags.map((t) => (
-                <span key={t} className="chip" onClick={() => removeTag(t)}>
-                  #{t} ×
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="f">
-            <label>
-              ไฟล์เกมใหม่ {kind === "html" ? "(.html/.zip)" : "(.rar)"} — เว้นว่างถ้าไม่เปลี่ยน
-            </label>
-            <input
-              type="file"
-              accept={acceptForKind}
-              onChange={(e) => setNewFile(e.target.files?.[0] || null)}
-            />
-            {newFile && <small className="muted">เลือกไฟล์: {newFile.name}</small>}
-          </div>
-
-          <div className="f">
-            <label>ภาพหน้าปกใหม่ — เว้นว่างถ้าไม่เปลี่ยน</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setNewCover(e.target.files?.[0] || null)}
-            />
-          </div>
-
-          <div className="f">
-            <label>สกรีนช็อต (อัปโหลดใหม่จะ “แทนที่ทั้งหมด”) — สูงสุด 5 รูป</label>
-            <input
-              ref={screensInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={onPickScreens}
-            />
-            {newScreens.length > 0 && (
-              <small className="muted">
-                จะอัปโหลดใหม่ {newScreens.length} รูป และแทนที่รูปเดิมทั้งหมด
-              </small>
-            )}
-          </div>
-
-          <div className="f actions">
-            <button className="btn btn-primary" disabled={saving} onClick={onSave}>
-              {saving ? "Saving..." : "Save changes"}
-            </button>
-            <button className="btn" onClick={() => nav(-1)} disabled={saving}>
-              Cancel
-            </button>
-          </div>
-        </section>
-
-        {/* ===== PREVIEW ===== */}
-        <aside className="card">
-          <div className="stage">
-            {playable ? (
-              <iframe className="stage__frame" src={fileSrc} title="preview" />
-            ) : (
-              <img className="stage__image" src={cdn(coverUrl || "/no-cover.png")} alt="" />
-            )}
-          </div>
-
-          <div className="meta">
-            <div className="meta__title">
-              <b>{title || "Untitled"}</b>
-            </div>
-            <div className="meta__chips">
-              <span className="chip">{categoryLabel}</span>
-              <span className="chip">{downloadOnly ? "Download" : "HTML / Web"}</span>
-              <span className={`chip ${visibility === "public" ? "chip-ok" : "chip-warn"}`}>
-                {visibility}
-              </span>
-              {pendingPublic ? <span className="chip chip-pending">pending public</span> : null}
-            </div>
-
-            <div className="meta__btns">
-              {downloadOnly ? (
-                <a className="btn" href={fileSrc} target="_blank" rel="noreferrer">
-                  📥 Open download
-                </a>
-              ) : (
-                <a className="btn" href={fileSrc} target="_blank" rel="noreferrer">
-                  🎮 Open playable
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div className="shots">
-            {(newScreenPreviews.length > 0 ? newScreenPreviews : screens).map((u, i) => (
-              <div key={i} className="shot">
-                <img src={newScreenPreviews.length > 0 ? u : cdn(u)} alt={`shot-${i}`} />
+      <div className="itch-wrap">
+        <div className="itch-top">
+          <div>
+            <h1 className="itch-title">Edit project</h1>
+            <div className="itch-sub">
+              Update your game page: title, cover, files, screenshots, trailer, tags, and details.
+              <div className="status-line">
+                Current status: <b>{statusLabel}</b>
+                {pendingPublic ? <span className="pending"> · pending public</span> : null}
               </div>
-            ))}
-            {screens.length === 0 && newScreenPreviews.length === 0 && (
-              <div className="muted">ยังไม่มีสกรีนช็อต</div>
-            )}
+            </div>
           </div>
-        </aside>
+
+          <div className="itch-meta">
+            <button type="button" className="btn btn-outline-on" onClick={openViewPage}>
+              View page
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={onSubmit} className="itch-grid">
+          {/* LEFT */}
+          <div className="itch-col">
+            {/* Basics */}
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Make sure everyone can find your page</div>
+                <div className="box-desc muted">
+                  Use a clear title and tagline, then choose the right genre and tags to improve search visibility.
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="label">Title</label>
+                <input className="input" placeholder="e.g., Banana Clicker" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
+
+              <div className="field">
+                <label className="label">Project URL</label>
+                <div className="url-row">
+                  <span className="url-prefix muted">https://gpx.gg/</span>
+                  <input
+                    className="input input-clean"
+                    placeholder="your-awesome-game"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="label">Short description or tagline</label>
+                <input
+                  className="input"
+                  placeholder="A short line that makes people want to click"
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                />
+              </div>
+
+              <div className="two">
+                <div className="field">
+                  <label className="label">Kind of project</label>
+
+                  {/* ✅ Custom dropdown (same style as UploadGame) */}
+                  <div className="kind-select">
+                    <button
+                      type="button"
+                      className="kind-trigger"
+                      onClick={() => setKindOpen((v) => !v)}
+                      aria-haspopup="listbox"
+                      aria-expanded={kindOpen ? "true" : "false"}
+                    >
+                      <span className="kind-name" title={kindLabel}>{kindLabel}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" className={kindOpen ? "rot" : ""}>
+                        <path fill="currentColor" d="M7 10l5 5 5-5H7z" />
+                      </svg>
+                    </button>
+
+                    {kindOpen && (
+                      <div className="kind-menu" role="listbox" onMouseLeave={() => setKindOpen(false)}>
+                        <div
+                          role="option"
+                          aria-selected={kind === "download" ? "true" : "false"}
+                          className={`kind-item ${kind === "download" ? "is-active" : ""}`}
+                          onClick={() => {
+                            setKind("download");
+                            setKindOpen(false);
+                          }}
+                          title="Downloadable — files to be downloaded (.rar)"
+                        >
+                          <span className="kind-item-text">Downloadable — files to be downloaded (.rar)</span>
+                        </div>
+
+                        <div
+                          role="option"
+                          aria-selected={kind === "html" ? "true" : "false"}
+                          className={`kind-item ${kind === "html" ? "is-active" : ""}`}
+                          onClick={() => {
+                            setKind("html");
+                            setKindOpen(false);
+                          }}
+                          title="HTML — played in the browser (.html / .zip)"
+                        >
+                          <span className="kind-item-text">HTML — played in the browser (.html / .zip)</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="label">Genre</label>
+                  <div className="cat-select">
+                    <button
+                      type="button"
+                      className="cat-trigger"
+                      onClick={() => setCatOpen((v) => !v)}
+                      style={{ borderColor: currentCat.color }}
+                    >
+                      <span className="cat-left">
+                        <span className="cat-dot" style={{ background: currentCat.color }} />
+                        <span className="cat-emoji">{currentCat.emoji}</span>
+                        <span className="cat-name">{currentCat.name}</span>
+                      </span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" className={catOpen ? "rot" : ""}>
+                        <path fill="currentColor" d="M7 10l5 5 5-5H7z" />
+                      </svg>
+                    </button>
+
+                    {catOpen && (
+                      <div className="cat-menu" onMouseLeave={() => setCatOpen(false)}>
+                        {CATEGORIES.map((c) => (
+                          <div
+                            key={c.id}
+                            className={`cat-item ${c.id === category ? "is-active" : ""}`}
+                            onClick={() => {
+                              setCategory(c.id);
+                              setCatOpen(false);
+                            }}
+                          >
+                            <span className="cat-dot" style={{ background: c.color }} />
+                            <span className="cat-emoji">{c.emoji}</span>
+                            <span className="cat-name">{c.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div className="field">
+                <label className="label">Tags (max 10)</label>
+                <div className="tag-row">
+                  <input
+                    className="input"
+                    placeholder="e.g., pixel-art, roguelike, cozy"
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addTag();
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn" onClick={addTag}>
+                    Add tag
+                  </button>
+                </div>
+
+                {!!tags.length && (
+                  <div className="chips">
+                    {tags.map((t) => (
+                      <span key={t} className="chip">
+                        #{t}
+                        <button type="button" onClick={() => removeTag(t)} aria-label={`remove ${t}`}>
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Uploads */}
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Uploads</div>
+                <div className="box-desc muted">Replace your main game file (optional). If you don’t pick a file, the old one stays.</div>
+              </div>
+
+              <div className="field">
+                <div className="upload-row">
+                  <label className="btn btn-primary" htmlFor="edit-gamefile">
+                    Upload files
+                  </label>
+                  <input
+                    id="edit-gamefile"
+                    ref={fileInputRef}
+                    type="file"
+                    accept={acceptForKind}
+                    onChange={(e) => setNewFile(e.target.files?.[0] || null)}
+                    style={{ display: "none" }}
+                  />
+
+                  <div className="help muted">
+                    {kind === "html"
+                      ? "Supported: .html or .zip (recommended: zip contains index.html)"
+                      : "Supported: .rar for download"}
+                  </div>
+                </div>
+
+                {newFile ? (
+                  <div className="file-line">
+                    <span>📁 {newFile.name}</span>
+                    <span className="muted">({(newFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  </div>
+                ) : fileUrl ? (
+                  <div className="file-line">
+                    <span className="muted">Current file:</span>
+                    <a className="link" href={fileSrc} target="_blank" rel="noreferrer">
+                      open
+                    </a>
+                    {playable ? <span className="muted"> · playable</span> : null}
+                    {downloadOnly ? <span className="muted"> · download-only</span> : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {progress > 0 && (
+                <div className="progress">
+                  <div className="bar" style={{ width: `${progress}%` }} />
+                </div>
+              )}
+            </section>
+
+            {/* Details */}
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Details</div>
+                <div className="box-desc muted">Write what players need: how to play, features, credits, and version notes.</div>
+              </div>
+
+              <textarea
+                className="textarea"
+                rows={10}
+                placeholder="Write your game description…"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </section>
+
+            {/* Community */}
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Community</div>
+                <div className="box-desc muted">Choose whether to enable comments under your game page.</div>
+              </div>
+
+              <div className="radio-col">
+                <label className="radio">
+                  <input type="radio" name="community" checked={communityMode === "off"} onChange={() => setCommunityMode("off")} />
+                  <span>Disabled</span>
+                </label>
+                <label className="radio">
+                  <input
+                    type="radio"
+                    name="community"
+                    checked={communityMode === "comments"}
+                    onChange={() => setCommunityMode("comments")}
+                  />
+                  <span>Comments — Add a comment thread to the page</span>
+                </label>
+              </div>
+            </section>
+
+            {/* Visibility */}
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Visibility & access</div>
+                <div className="box-desc muted">
+                  Choosing Public will submit for admin review (for non-admin). It will not appear on Home/Search until approved.
+                </div>
+              </div>
+
+              <div className="radio-col">
+
+                <label className="radio">
+                  <input type="radio" name="vis" checked={visChoice === "restricted"} onChange={() => setVisByChoice("restricted")} />
+                  <span>Restricted — Only owners & authorized people can view the page</span>
+                </label>
+
+                <label className="radio">
+                  <input type="radio" name="vis" checked={visChoice === "public"} onChange={() => setVisByChoice("public")} />
+                  <span>Public — Submit for review (system value: <b>public</b>)</span>
+                </label>
+              </div>
+
+              {!isAdmin && visibilityChoice === "public" ? (
+                <div className="help muted">* After save, status will be <b>review</b> until admin approves.</div>
+              ) : null}
+            </section>
+
+            {msg && <div className="banner">{msg}</div>}
+
+            <div className="actions">
+              <button type="button" className="btn" onClick={resetUploads} disabled={busy}>
+                Reset uploads
+              </button>
+
+              <button type="button" className="btn btn-outline-on" onClick={openViewPage} disabled={busy}>
+                View page
+              </button>
+
+              <button type="submit" className="btn btn-primary" disabled={busy}>
+                {busy ? (
+                  <>
+                    <span className="spinner" /> Saving…{progress > 0 ? ` ${progress}%` : ""}
+                  </>
+                ) : (
+                  <>Save</>
+                )}
+              </button>
+
+              <button type="button" className="btn" onClick={() => nav(-1)} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT */}
+          <aside className="itch-side">
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Cover image</div>
+                <div className="box-desc muted">Recommended 16:9 (1200×675). Upload to replace (optional).</div>
+              </div>
+
+              <div className="cover-drop">
+                <div className="cover-inner">
+                  {coverPreview ? (
+                    <img src={coverPreview} alt="cover" />
+                  ) : coverUrl ? (
+                    <img src={cdn(coverUrl)} alt="cover" />
+                  ) : (
+                    <div className="cover-empty muted">No cover uploaded</div>
+                  )}
+                </div>
+
+                <label className="btn btn-primary cover-btn" htmlFor="edit-coverfile">
+                  Upload Cover Image
+                </label>
+                <input
+                  id="edit-coverfile"
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={onCoverChange}
+                  style={{ display: "none" }}
+                />
+              </div>
+
+              <div className="help muted">This image is used for link previews and game cards on the Home page.</div>
+            </section>
+
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Gameplay video or trailer</div>
+                <div className="box-desc muted">Paste a YouTube / Vimeo link.</div>
+              </div>
+
+              <input
+                className="input"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+              />
+
+              <div className="help muted">The video will be shown on your game detail page.</div>
+            </section>
+
+            <section className="box">
+              <div className="box-head">
+                <div className="box-title">Screenshots</div>
+                <div className="box-desc muted">Recommended: 3–5 images (max 5). Uploading new screenshots will replace all.</div>
+              </div>
+
+              <label className="btn btn-primary" htmlFor="edit-screenfile">
+                Add screenshots
+              </label>
+              <input
+                id="edit-screenfile"
+                ref={screensInputRef}
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp"
+                onChange={onScreensChange}
+                style={{ display: "none" }}
+              />
+
+              {!!screenPreviews.length && (
+                <div className="screens">
+                  {screenPreviews.map((u, i) => (
+                    <figure key={i} className="screen">
+                      <img src={u} alt={`s-${i}`} />
+                    </figure>
+                  ))}
+                </div>
+              )}
+
+              {!screenPreviews.length && !!screens.length && (
+                <div className="screens">
+                  {screens.slice(0, 5).map((u, i) => (
+                    <figure key={i} className="screen">
+                      <img src={cdn(u)} alt={`s-old-${i}`} />
+                    </figure>
+                  ))}
+                </div>
+              )}
+            </section>
+          </aside>
+        </form>
       </div>
     </div>
   );
 }
 
+/** scoped styles */
 function StyleLocal() {
   return (
     <style>{`
-.page-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;gap:12px}
-.h1{margin:0}
-.sub{margin-top:2px;color:#9fb4c8;font-size:12px}
-.pending{color:#facc15}
-.head-actions{display:flex;gap:8px}
+/* layout */
+.itch-wrap{ display:grid; gap:14px; }
+.itch-top{ display:flex; align-items:flex-end; justify-content:space-between; gap:14px; }
+.itch-title{ margin:0; font-size:28px; color:var(--text); letter-spacing:.2px; }
+.itch-sub{ margin-top:6px; color:var(--muted); max-width:70ch; }
+.status-line{ margin-top:6px; font-size:12px; color:#9fb4c8; }
+.pending{ color:#facc15; }
+.itch-meta{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 
-.alert{background:#3a1116;border:1px solid #ff5a6b;color:#ffd4d8;border-radius:10px;padding:10px 12px;margin-bottom:12px}
-.note{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#d1fae5;border-radius:10px;padding:10px 12px;margin-bottom:12px}
-
-.card{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));border:1px solid var(--stroke);border-radius:16px;padding:14px}
-.edit-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
-@media (max-width: 980px){ .edit-grid{grid-template-columns:1fr} }
-
-.f{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-.f input,.f textarea,.f select{background:rgba(255,255,255,.05);border:1px solid var(--stroke);color:var(--text);border-radius:12px;padding:10px 12px;outline:none}
-.row{display:flex;gap:8px}
-.btn{appearance:none;border:1px solid var(--stroke);background:var(--glass);color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-.btn-primary{border:none;background:linear-gradient(135deg,#59e0ff,#35c4ff);color:#041318;font-weight:800}
-.muted{color:#9fb4c8;font-size:12px}
-.tags{display:flex;gap:8px;flex-wrap:wrap}
-.chip{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.05);cursor:pointer}
-.actions{display:flex;flex-direction:row;gap:8px;align-items:center;margin-top:2px}
-
-/* visibility pills */
-.vis-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-.vis-pill{
-  flex:1 1 160px;
-  padding:8px 12px;
-  border-radius:16px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.05);
-  color:#e5e7eb;
-  font-size:13px;
-  display:flex;
-  flex-direction:column;
-  align-items:flex-start;
-  text-align:left;
-  cursor:pointer;
-  transition:.16s ease;
+/* banner */
+.banner{
+  padding:10px 12px; border-radius:10px;
+  border:1px solid var(--stroke); background:rgba(255,255,255,.04);
+  color:#eaf4ff;
 }
-.vis-pill:hover{border-color:rgba(96,165,250,1);box-shadow:0 8px 22px rgba(0,0,0,.6)}
-.vis-pill--active{border-color:rgba(59,130,246,1);background:radial-gradient(circle at top left,#1d4ed8,#020617)}
-.vis-sub{font-size:11px;opacity:.8}
 
-/* preview */
-.stage{position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;margin-bottom:10px}
-.stage__frame{position:absolute;inset:0;width:100%;height:100%;border:0}
-.stage__image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.meta{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-.meta__chips{display:flex;flex-wrap:wrap;gap:6px}
-.meta__btns{margin-top:6px;display:flex;gap:8px}
+/* grid */
+.itch-grid{
+  display:grid;
+  grid-template-columns: 1.35fr .85fr;
+  gap:14px;
+  align-items:start;
+}
+@media (max-width: 980px){
+  .itch-grid{ grid-template-columns: 1fr; }
+}
 
-.chip-ok{border-color:rgba(34,197,94,.6);background:rgba(34,197,94,.12)}
-.chip-warn{border-color:rgba(250,204,21,.6);background:rgba(250,204,21,.10)}
-.chip-pending{border-color:rgba(250,204,21,.8);background:rgba(250,204,21,.14);color:#facc15}
+/* boxes */
+.box{
+  border:1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  border-radius:12px;
+  padding:14px;
+  box-shadow: var(--shadow);
+}
+.itch-col{ display:grid; gap:12px; }
+.itch-side{ display:grid; gap:12px; position:sticky; top:14px; }
+@media (max-width: 980px){ .itch-side{ position:static; } }
 
-.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-.shot{aspect-ratio:16/9;border:1px solid var(--stroke);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.05)}
-.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.box-head{ margin-bottom:10px; }
+.box-title{ font-weight:700; color:var(--text); }
+.box-desc{ margin-top:4px; font-size:13px; }
+
+.field{ margin-top:10px; min-width:0; }
+.label{ display:block; font-size:12px; color:#bcd3e8; margin-bottom:6px; }
+.help{ margin-top:6px; font-size:12px; }
+.muted{ color:var(--muted); }
+
+.two{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+@media (max-width: 680px){ .two{ grid-template-columns:1fr; } }
+
+/* inputs */
+.input, .textarea{
+  width:100%;
+  border-radius:10px;
+  border:1px solid var(--stroke);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  padding:10px 12px;
+  outline:none;
+  transition:.15s ease;
+}
+.input:focus, .textarea:focus{
+  border-color:#5cd5ff;
+  box-shadow:0 0 0 4px rgba(72,208,255,.14);
+}
+.input-clean{ background: rgba(255,255,255,.02); }
+.textarea{ resize:vertical; min-height:160px; }
+
+.url-row{ display:flex; align-items:center; gap:8px; }
+.url-prefix{ font-size:13px; white-space:nowrap; opacity:.9; }
+.link{ color:#7dd3fc; text-decoration:none; }
+.link:hover{ text-decoration:underline; }
+
+/* ✅ Kind of project (CUSTOM dropdown) = same as UploadGame + prevent (.rar) wrap */
+.kind-select{ position:relative; }
+.kind-trigger{
+  width:100%;
+  display:flex; align-items:center; justify-content:space-between;
+  height:42px;
+  padding:0 12px;
+  border-radius:10px;
+  border:2px solid var(--stroke);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  cursor:pointer;
+  transition:.15s ease;
+  text-align:left;
+}
+.kind-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.kind-trigger:hover{ border-color:#6bd9ff; }
+.kind-trigger svg{ opacity:.85; transition:.2s; }
+.kind-trigger svg.rot{ transform:rotate(180deg); }
+
+.kind-menu{
+  position:absolute; top:48px; left:0; right:0; z-index:30;
+  border-radius:12px;
+  border:1px solid var(--stroke);
+  background:#0d1014;
+  box-shadow: var(--shadow);
+  overflow:hidden;
+}
+.kind-item{
+  padding:10px 12px;
+  cursor:pointer;
+  color:var(--text);
+}
+.kind-item-text{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;  /* ✅ stop .rar breaking line */
+}
+.kind-item:hover{ background: rgba(255,255,255,.06); }
+.kind-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
+
+/* category dropdown */
+.cat-select{ position:relative; }
+.cat-trigger{
+  width:100%;
+  display:flex; align-items:center; justify-content:space-between;
+  height:42px;
+  padding:0 12px;
+  border-radius:10px;
+  border:2px solid var(--stroke);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  cursor:pointer;
+  transition:.15s ease;
+}
+.cat-left{ display:flex; align-items:center; gap:8px; }
+.cat-dot{ width:10px; height:10px; border-radius:999px; box-shadow:0 0 0 2px rgba(255,255,255,.12) inset; }
+.cat-emoji{ opacity:.95; }
+.cat-trigger:hover{ border-color:#6bd9ff; }
+.cat-trigger svg{ opacity:.85; transition:.2s; }
+.cat-trigger svg.rot{ transform:rotate(180deg); }
+
+.cat-menu{
+  position:absolute; top:48px; left:0; right:0; z-index:30;
+  border-radius:12px;
+  border:1px solid var(--stroke);
+  background:#0d1014;
+  box-shadow: var(--shadow);
+  max-height:340px;
+  overflow:auto;
+}
+.cat-item{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px;
+  cursor:pointer;
+}
+.cat-item:hover{ background: rgba(255,255,255,.06); }
+.cat-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
+
+/* tags */
+.tag-row{ display:flex; gap:10px; align-items:center; }
+.tag-row .input{ padding:8px 10px; font-size:13px; height:40px; }
+.tag-row .btn{ padding:8px 12px; font-size:13px; height:40px; white-space:nowrap; }
+
+.chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.chip{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--stroke);
+  background: rgba(255,255,255,.06);
+  color:#dfe7ee;
+  font-size:13px;
+}
+.chip button{ background:transparent; border:none; color:#9bb2c7; cursor:pointer; font-size:14px; }
+
+/* radios */
+.radio-col{ display:grid; gap:10px; margin-top:8px; }
+.radio{
+  display:flex; gap:10px; align-items:flex-start;
+  padding:10px 10px;
+  border-radius:10px;
+  border:1px solid var(--stroke);
+  background: rgba(255,255,255,.04);
+  cursor:pointer;
+}
+.radio input{ margin-top:3px; }
+
+/* upload row */
+.upload-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.file-line{ margin-top:8px; display:flex; gap:8px; align-items:center; }
+
+/* buttons */
+.btn{
+  border:1px solid var(--stroke);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  padding:10px 12px;
+  border-radius:10px;
+  cursor:pointer;
+  transition:.15s ease;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  text-decoration:none;
+}
+.btn:hover{ transform:translateY(-1px); box-shadow:0 12px 28px rgba(0,0,0,.35); }
+.btn[disabled]{ opacity:.65; cursor:default; transform:none; box-shadow:none; }
+.btn-primary{
+  border:none;
+  background: linear-gradient(135deg, #59e0ff, #35c4ff);
+  color:#041318;
+  font-weight:700;
+}
+.btn-outline-on{ border-color:#6bd9ff; background: rgba(72,208,255,.10); }
+.actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+.spinner{
+  width:14px; height:14px; border-radius:999px;
+  border:2px solid rgba(15,23,42,.35);
+  border-top-color:#eaf4ff;
+  display:inline-block;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+/* progress */
+.progress{
+  height:10px;
+  border-radius:999px;
+  background: rgba(255,255,255,.06);
+  border:1px solid var(--stroke);
+  overflow:hidden;
+  margin-top:10px;
+}
+.progress .bar{
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, #59e0ff, #35c4ff, #8b5cf6);
+  transition: width .2s ease;
+}
+
+/* right side cover/screen */
+.cover-drop{
+  border:1px dashed var(--stroke);
+  border-radius:12px;
+  padding:10px;
+  background: rgba(255,255,255,.03);
+}
+.cover-inner{
+  position:relative;
+  width:100%;
+  aspect-ratio:16/9;
+  border-radius:10px;
+  overflow:hidden;
+  background: rgba(0,0,0,.18);
+  display:grid;
+  place-items:center;
+}
+.cover-inner img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.cover-btn{ width:100%; justify-content:center; margin-top:10px; }
+.cover-empty{ font-size:13px; }
+
+.screens{ margin-top:10px; display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+.screen{ aspect-ratio:16/9; border-radius:10px; overflow:hidden; border:1px solid var(--stroke); background: rgba(255,255,255,.04); }
+.screen img{ width:100%; height:100%; object-fit:cover; }
 `}</style>
   );
 }

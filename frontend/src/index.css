@@ -2,28 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Theme ===== */
+/* =========================================
+   THEME (60 / 30 / 10)
+   60% = --bg (พื้นหลังหลัก)
+   30% = --panel (พื้นผิว/กล่อง/บาร์/การ์ด)
+   10% = --brand (สีเน้น/ปุ่มหลัก/ลิงก์)
+========================================= */
 :root{
-  --bg:#0b0d10; --panel:#0f1115; --glass:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.12);
-  --muted:#a9b1bb; --text:#e8edf2; --brand:#48d0ff; --brand2:#8b5cf6;
+  --bg:#0B0F14;         /* 60% */
+  --panel:#151A22;      /* 30% */
+  --glass:rgba(255,255,255,.06);
+  --stroke:rgba(255,255,255,.12);
+
+  --muted:#A9B1BB;
+  --text:#EAF2FF;
+
+  --brand:#38BDF8;      /* 10% */
+  --brand2:#8B5CF6;
+
   --shadow:0 24px 60px rgba(0,0,0,.55);
 }
+
 *{ box-sizing:border-box }
 html,body,#root{ height:100% }
 
-/* 👇 ตรงนี้คือส่วนที่เปลี่ยน: ตัด gradient ออก ให้เป็นสีพื้นเดียว */
-html,body,#root{ height:100% }
+html{ font-size:16px; }
+
+input, button, select, textarea{
+  font: inherit;
+}
 
 html,body{
   margin:0;
-  background-color: var(--bg);   /* <- เหลือแค่นี้ ไม่ต้องมี radial-gradient แล้ว */
+  background-color: var(--bg);
   color:var(--text);
-  font-family:"Inter",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji",sans-serif;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,"Noto Sans",sans-serif;
   line-height:1.65;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
-
 
 a{ color:var(--brand) }
 .container{ width:min(1180px, 100% - 40px); margin-inline:auto }
@@ -37,7 +54,7 @@ a{ color:var(--brand) }
 .hero-neo{ position:relative; padding:66px 0 32px; overflow:visible; border-bottom:1px solid var(--stroke); text-align:center }
 .hero-neo__inner{ position:relative; z-index:2 }
 .hero-neo__badge{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--stroke); background:rgba(255,255,255,.05); color:#dfe7ee; font-size:12px; margin-bottom:10px }
-.hero-neo__title{ margin:10px 0 8px; font-size:clamp(34px, 6.2vw, 62px); line-height:1.07; font-weight:900 }
+.hero-neo__title{ margin:10px 0 8px; font-size:clamp(34px, 6.2vw, 62px); line-height:1.07; font-weight:800 }
 .hero-neo__sub{ color:var(--muted); margin:10px 0 18px; font-size:clamp(14px,1.9vw,16px) }
 
 .hero-neo__blob{ position:absolute; width:700px; height:700px; border-radius:50%; filter:blur(52px); opacity:.45 }
@@ -47,6 +64,7 @@ a{ color:var(--brand) }
 .shine{ position:absolute; inset:0; background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.08) 40%, transparent 60%); transform:skewY(-6deg); pointer-events:none }
 
 /* ===== Command Bar (One Capsule) ===== */
+/* ✅ เปลี่ยนให้ "เทาสวยๆ" มากขึ้น: ใช้ panel + เงานุ่ม + ขอบคม */
 .cmdbar{
   --h: 52px;
   width:min(980px, 100%);
@@ -54,9 +72,13 @@ a{ color:var(--brand) }
   display:flex; align-items:center; gap:0;
   padding:6px;
   border-radius:999px;
-  background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+
+  /* จากเดิม glass จ๋า → เทาเข้มสวย ๆ */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04)),
+    var(--panel);
   border:1px solid var(--stroke);
-  box-shadow:0 18px 58px rgba(0,0,0,.45);
+  box-shadow:0 18px 58px rgba(0,0,0,.40);
   overflow:visible; /* ให้ดรอปดาวน์ไม่โดนตัด */
 }
 .cmdseg{ height:var(--h); display:flex; align-items:center }
@@ -66,6 +88,7 @@ a{ color:var(--brand) }
   color:var(--text); font-size:15px;
   -webkit-appearance:none; appearance:none;
 }
+.cmd-input-el::placeholder{ color: rgba(234,242,255,.45) }
 .cmd-divider{ width:1px; height:30px; background:rgba(255,255,255,.14); margin:0 10px; flex:0 0 auto }
 
 /* Category (ครอบ fcs) */
@@ -74,8 +97,12 @@ a{ color:var(--brand) }
 .cmd-cat .fcs-trigger{
   width:100%; height:100%;
   display:flex; align-items:center; gap:8px; padding:0 14px;
-  border-radius:999px; background:rgba(255,255,255,.06); color:var(--text);
-  border:1px solid rgba(255,255,255,.10);
+  border-radius:999px;
+
+  /* ✅ ให้เป็นเทาเนียน ๆ เข้ากับ cmdbar */
+  background: rgba(255,255,255,.06);
+  color:var(--text);
+  border:1px solid rgba(255,255,255,.12);
 }
 .cmd-cat .fcs-menu{ width:100%; min-width:100%; z-index:40 }
 
@@ -87,9 +114,20 @@ a{ color:var(--brand) }
   transition:.18s ease; border-radius:999px;
 }
 .cmd-btn{ width:132px; min-width:120px; justify-content:center; margin-left:10px }
-.cmd-btn--primary{ background:linear-gradient(135deg,#59e0ff,#35c4ff); color:#072028; box-shadow:0 10px 24px rgba(0,172,255,.25) }
-.cmd-btn--primary:hover{ transform:translateY(-1px); box-shadow:0 16px 32px rgba(0,172,255,.28) }
-.cmd-btn--outline{ background:transparent; color:#eaf4ff; border:1px solid rgba(255,255,255,.18) }
+
+/* ✅ ใช้ --brand ให้เข้ากับ 10% */
+.cmd-btn--primary{
+  background:linear-gradient(135deg, var(--brand), #35c4ff);
+  color:#072028;
+  box-shadow:0 10px 24px rgba(56,189,248,.22);
+}
+.cmd-btn--primary:hover{ transform:translateY(-1px); box-shadow:0 16px 32px rgba(56,189,248,.26) }
+
+.cmd-btn--outline{
+  background:transparent;
+  color:#eaf4ff;
+  border:1px solid rgba(255,255,255,.18)
+}
 .cmd-btn--outline:hover{ background:rgba(255,255,255,.06); transform:translateY(-1px) }
 
 /* Responsive: แตกเป็น 2 แถวแบบไม่เบียด */
@@ -104,19 +142,27 @@ a{ color:var(--brand) }
 /* ===== Lists / Cards ===== */
 .section__head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px }
 .section__title{ margin:0; font-size:clamp(20px,2.6vw,28px); background:linear-gradient(180deg,#fff,#e8f3ff); -webkit-background-clip:text; background-clip:text; color:transparent }
-.link-muted{ color:#a9b1bb; cursor:pointer } .link-muted:hover{ color:#dfe7ee }
+.link-muted{ color:var(--muted); cursor:pointer } .link-muted:hover{ color:#dfe7ee }
 
 .pill-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px }
 .pill{ padding:8px 12px; font-size:13px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid var(--stroke); color:#dfe7ee; cursor:pointer; transition:.2s }
-.pill:hover{ border-color:#6bd9ff; color:#f2fbff; transform:translateY(-1px) }
+.pill:hover{ border-color:var(--brand); color:#f2fbff; transform:translateY(-1px) }
 
 .grid-cards{ display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)) }
-.card{ background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); border:1px solid var(--stroke); border-radius:16px; box-shadow:var(--shadow) }
+.card{
+  /* ✅ ให้การ์ดอยู่ใน 30% (surface) มากขึ้น */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
+    var(--panel);
+  border:1px solid var(--stroke);
+  border-radius:16px;
+  box-shadow:var(--shadow)
+}
 .card:hover{ transform:translateY(-4px); box-shadow:0 18px 48px rgba(0,0,0,.35) }
 .game-card .cover{ aspect-ratio:16/9; background-size:cover; background-position:center }
 .game-card .meta{ padding:10px 12px }
 .game-card .title{ margin:0 0 4px; font-size:16px }
-.muted{ color:#a9b1bb }
+.muted{ color:var(--muted) }
 
 .skeleton-grid{ display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)) }
 .skel{ background:linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size:140% 100%; animation:shimmer 1.2s infinite }
@@ -133,9 +179,7 @@ a{ color:var(--brand) }
 .footer-neo .links{ display:flex; gap:14px }
 .footer-neo .links a{ color:#b8dcff }
 
-
 /* ===== Auth Modal (amx-*) – ศูนย์กลาง / สวย / สมส่วน ===== */
-
 .amx-backdrop{
   position: fixed;
   inset: 0;
@@ -241,8 +285,6 @@ a{ color:var(--brand) }
 .amx-or::before{ left:0 } .amx-or::after{ right:0 }
 .amx-or span{ background:transparent; padding:0 8px }
 
-
-
 /* ===== Nav Neo (Header Glass) ===== */
 .nav-neo{
   position: sticky; top:0; z-index:100;
@@ -335,12 +377,9 @@ a{ color:var(--brand) }
 header a{ text-decoration:none }
 header ul{ list-style:none; margin:0; padding:0 }
 
-
-
-
 /* Modal backdrop + panel */
 .am-backdrop{
-  position: fixed; inset: 0; z-index: 1000; /* ✅ สูงพอ */
+  position: fixed; inset: 0; z-index: 1000;
   display:grid; place-items:center;
   background: rgba(0,0,0,.55);
   backdrop-filter: blur(2px);
@@ -374,8 +413,6 @@ header ul{ list-style:none; margin:0; padding:0 }
 .am-btn--github{ display:flex; align-items:center; justify-content:center; gap:8px; background:#0f1115; border:1px solid #2a2f36; }
 .am-or{ display:flex; align-items:center; gap:10px; opacity:.8 }
 .am-or::before, .am-or::after{ content:""; flex:1; height:1px; background:#233 }
-
-
 
 /* ====== NAV-PRO (polish) ====== */
 .nav-pro{
@@ -442,10 +479,9 @@ header ul{ list-style:none; margin:0; padding:0 }
 /* Small screens */
 @media (max-width: 640px){
   .nav-pro__inner{ height: 54px; }
-  .nav-pro__brand-sub{ display:none; }           /* ย่อ subtitle แบรนด์ */
+  .nav-pro__brand-sub{ display:none; }
   .nav-pro__right .nav-pro__chip{ height: 32px; padding: 0 12px; }
 }
-
 
 /* ===== Profile (solid background / modern) ===== */
 :root{
@@ -557,7 +593,6 @@ header ul{ list-style:none; margin:0; padding:0 }
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 }
 
-
 /* skeleton */
 .ppx-game--skel{ pointer-events:none }
 .ppx-skel.cover{
@@ -583,21 +618,36 @@ header ul{ list-style:none; margin:0; padding:0 }
   .ppx-name{ font-size:24px }
 }
 
-
 /* ==== Simplify Home hero background (no colorful blobs) ==== */
 .hero-neo {
-  background: transparent;          /* หรือจะใช้ var(--bg) ก็ได้ */
+  background: transparent;
   border-bottom: 1px solid var(--stroke);
 }
 
 .hero-neo__blob,
 .hero-neo__grid,
 .shine {
-  display: none !important;         /* ปิดวงกลมไล่สี + grid + เส้นเงาวาว */
+  display: none !important;
+}
+/* ===== Make navbar text normal (standard) ===== */
+.nav-neo,
+.nav-pro{
+  font-weight: 400;        /* ตัวอักษรปกติ */
 }
 
+.nav-neo__link,
+.nav-pro__chip,
+.account__name{
+  font-weight: 500;        /* ให้ดูชัดแบบมาตรฐาน (ไม่หนาเวอร์) */
+}
 
+.nav-neo__sub,
+.nav-pro__brand-sub{
+  font-weight: 400;
+}
 
-
-
-
+/* ถ้าปุ่ม/ชิปหนาเกิน ลดลง */
+.chip,
+.nav-pro__chip{
+  font-weight: 600;
+}

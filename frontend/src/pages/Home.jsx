@@ -6,6 +6,7 @@ import FancyCategorySelect from "../components/FancyCategorySelect";
 import { cdn } from "../api/cdn";
 
 // ===== CSS สำหรับ Monthly Winner =====
+// ===== CSS สำหรับ Monthly Winner =====
 const MW_CSS = `
 .mw-card{
   position:relative;
@@ -13,14 +14,15 @@ const MW_CSS = `
   gap:24px;
   padding:18px 20px;
   border-radius:20px;
-  background:
-    radial-gradient(circle at 0 0, rgba(72,208,255,.12), transparent 55%),
-    radial-gradient(circle at 100% 0, rgba(139,92,246,.12), transparent 55%),
-    #020617;
-  border:1px solid rgba(148,163,184,.35);
-  box-shadow:0 24px 60px rgba(0,0,0,.7);
+
+  /* ✅ เหมือน cmdbar (ช่องค้นหา) */
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 18px 58px rgba(0,0,0,.45);
+
   cursor:pointer;
   overflow:hidden;
+  transition: .15s ease;
 }
 .mw-card:hover{ transform:translateY(-2px); }
 
@@ -31,8 +33,10 @@ const MW_CSS = `
   border-radius:16px;
   background-size:cover;
   background-position:center;
-  box-shadow:0 18px 42px rgba(0,0,0,.7);
+  box-shadow:0 18px 42px rgba(0,0,0,.55);
+  border:1px solid rgba(255,255,255,.10);
 }
+
 .mw-main{
   flex:1;
   min-width:0;
@@ -41,44 +45,50 @@ const MW_CSS = `
   justify-content:center;
   gap:8px;
 }
+
+/* ✅ badge ให้เป็นเทาใสเหมือนโทนช่องค้นหา */
 .mw-badge{
   display:inline-flex;
   align-items:center;
   gap:6px;
   padding:4px 10px;
   border-radius:999px;
-  background:rgba(15,23,42,.95);
-  border:1px solid rgba(148,163,184,.6);
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
   font-size:12px;
   letter-spacing:.08em;
   text-transform:uppercase;
-  color:#e5f2ff;
+  color:#e8edf2;
 }
 .mw-badge span{opacity:.9}
+
 .mw-title{ margin:4px 0 2px; font-size:22px; font-weight:900; }
-.mw-tagline{ font-size:14px; color:#cbd5f5; max-width:520px; }
-.mw-meta{ font-size:12px; color:#9ca3af; }
+.mw-tagline{ font-size:14px; color:rgba(232,237,242,.82); max-width:520px; }
+.mw-meta{ font-size:12px; color:rgba(232,237,242,.62); }
+
+/* ✅ ปุ่มให้เข้ากับธีม (เทาใส + ขอบ) */
 .mw-btn{
   margin-top:14px;
   align-self:flex-start;
   padding:9px 20px;
   border-radius:999px;
-  border:1px solid rgba(148,163,184,.9);
-  background:#0b1120;
-  color:#e5f3ff;
-  font-weight:700;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.06);
+  color:#e8edf2;
+  font-weight:800;
   font-size:14px;
   cursor:pointer;
   transition:.12s ease;
   box-shadow:none;
 }
-.mw-btn:hover{ background:#020617; }
+.mw-btn:hover{ background:rgba(255,255,255,.10); }
 
 @media (max-width: 960px){
   .mw-card{ flex-direction:column; }
   .mw-cover{ flex:0 0 auto; max-width:100%; width:100%; }
 }
 `;
+
 
 // ===== CSS เพิ่มสำหรับ plays/downloads =====
 const HOME_STATS_CSS = `
@@ -233,7 +243,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
             <span className="tx-gradient">Share Indie Games</span>
           </h1>
           <p className="hero-neo__sub">
-            ค้นหาเกมอินดี้เจ๋ง ๆ หรืออัปโหลดผลงานของคุณให้ชุมชนได้ลองเล่น
+            Find awesome indie games — or upload yours for the community to play.
           </p>
 
           <div className="cmdbar">
@@ -324,7 +334,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       {/* FEATURED & LATEST */}
       <section className="section container">
         <div className="section__head">
-          <h2 className="section__title">Featured &amp; Latest</h2>
+          <h2 className="section__title">Trending &amp; New</h2>
 
           {games.length > 0 && (
             <a

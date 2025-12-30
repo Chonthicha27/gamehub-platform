@@ -10,16 +10,13 @@ export default function NavBar({
 }) {
   const nav = useNavigate();
 
-  // ถ้ามี prop จากข้างนอก (เปิด modal) ให้ใช้; ถ้าไม่มีให้ไป route
   const goLogin = () => (onLoginClick ? onLoginClick() : nav("/login"));
   const goRegister = () =>
     onRegisterClick ? onRegisterClick() : nav("/register");
 
-  // ✅ เช็กสิทธิ์แอดมินจาก user
   const isAdmin =
     currentUser?.isAdmin === true || currentUser?.role === "admin";
 
-  // ✅ ชื่อที่จะแสดง: displayName ก่อน แล้วค่อย username
   const displayLabel =
     (currentUser?.displayName || "").trim() ||
     currentUser?.username ||
@@ -50,7 +47,6 @@ export default function NavBar({
         <div className="nav-pro__right">
           {!currentUser && (
             <>
-              {/* เปลี่ยนมาเรียก goLogin / goRegister */}
               <button
                 className="nav-pro__chip nav-pro__chip--ghost"
                 onClick={goLogin}
@@ -68,7 +64,6 @@ export default function NavBar({
 
           {currentUser && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* ✅ ปุ่ม Admin เฉพาะแอดมิน */}
               {isAdmin && (
                 <button
                   className="nav-pro__chip nav-pro__chip--ghost"
@@ -81,6 +76,7 @@ export default function NavBar({
               <button
                 className="nav-pro__chip nav-pro__chip--ghost"
                 onClick={() => nav("/favorites")}
+                title="View your Favorites"
               >
                 ★ Favorites
               </button>
@@ -98,7 +94,6 @@ export default function NavBar({
                     e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${avatarSeed}`;
                   }}
                 />
-                {/* ✅ ใช้ displayName ก่อน */}
                 <span>Hi, {displayLabel}</span>
               </button>
 
@@ -106,7 +101,7 @@ export default function NavBar({
                 className="nav-pro__chip nav-pro__chip--primary"
                 onClick={onLogout}
               >
-                Logout
+                Log out
               </button>
             </div>
           )}
