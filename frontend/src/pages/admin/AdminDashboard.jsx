@@ -5,18 +5,6 @@ import "./admin.css";
 
 /* ---------- Small UI helpers ---------- */
 
-function Chip({ children, tone = "gray" }) {
-  const map = {
-    gray: "chip-gray",
-    green: "chip-green",
-    blue: "chip-blue",
-    purple: "chip-purple",
-    red: "chip-red",
-    amber: "chip-amber",
-  };
-  return <span className={`chip ${map[tone] || map.gray}`}>{children}</span>;
-}
-
 const initials = (name = "") =>
   name
     .trim()
@@ -27,73 +15,212 @@ const initials = (name = "") =>
     .join("")
     .toUpperCase();
 
-/* ---------- Toolbar ด้านบน ---------- */
+const pad2 = (n) => String(n).padStart(2, "0");
 
-function Toolbar({ tab, setTab, search, setSearch, refresh, counts }) {
+function toYYYYMM(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function yyyyMmToLabel(yyyyMm) {
+  if (!yyyyMm) return "-";
+  try {
+    const d = new Date(`${yyyyMm}-01T00:00:00`);
+    if (Number.isNaN(d.getTime())) return yyyyMm;
+    return d.toLocaleString("en-US", { month: "long", year: "numeric" });
+  } catch {
+    return yyyyMm;
+  }
+}
+
+/* ---------- Plain text labels ---------- */
+
+function StatusText({ value }) {
+  if (value === "active") return <span className="meta meta-ok">Enabled</span>;
+  if (value === "suspended") return <span className="meta meta-bad">Suspended</span>;
+  return <span className="meta meta-dim">{String(value || "-")}</span>;
+}
+
+function RoleText({ value }) {
+  if (value === "admin") return <span className="meta meta-link">Admin</span>;
+  return <span className="meta meta-dim">User</span>;
+}
+
+function PublicationStatusText({ value }) {
+  // admin-friendly wording (clearer than "Visibility")
+  if (value === "public") return <span className="meta meta-ok">Published</span>;
+  if (value === "review") return <span className="meta meta-warn">Pending Review</span>;
+  if (value === "suspended") return <span className="meta meta-bad">Suspended</span>;
+  return <span className="meta meta-dim">{String(value || "-")}</span>;
+}
+
+function CommentStatusText({ value }) {
+  if (value === "visible") return <span className="meta meta-ok">Visible</span>;
+  if (value === "hidden") return <span className="meta meta-warn">Hidden</span>;
+  if (value === "deleted") return <span className="meta meta-dim">Removed</span>;
+  return <span className="meta meta-dim">{String(value || "-")}</span>;
+}
+
+function CategoryText({ value }) {
+  return <span className="meta meta-cat">{value || "-"}</span>;
+}
+
+function ReportsText({ count }) {
+  const n = Number(count || 0) || 0;
+  if (n <= 0) return <span className="meta meta-dim">0</span>;
+  return <span className="meta meta-warn">{n}</span>;
+}
+
+/* ---------- Toolbar ---------- */
+
+function Toolbar({ tab, setTab, search, setSearch, refresh, counts, loading }) {
   const placeholder =
     tab === "users"
-      ? "Search users..."
+      ? "Search users by username, email, role..."
       : tab === "games"
-      ? "Search games..."
+      ? "Search games by title, uploader, category..."
       : tab === "pending"
-      ? "Search pending games..."
+      ? "Search pending submissions..."
       : tab === "comments"
-      ? "Search comments..."
+      ? "Search reported comments..."
       : "Search monthly votes...";
+
+  const TabBtn = ({ id, label, count }) => (
+    <button
+      className={`tab ${tab === id ? "active" : ""}`}
+      onClick={() => setTab(id)}
+      type="button"
+      role="tab"
+      aria-selected={tab === id}
+    >
+      <span className="tab-dot" />
+      <span className="tab-label">{label}</span>
+      <span className="counter">{count}</span>
+    </button>
+  );
 
   return (
     <div className="admin-toolbar glass">
-      <div className="tabs">
-        <button
-          className={`tab ${tab === "users" ? "active" : ""}`}
-          onClick={() => setTab("users")}
-        >
-          <span className="tab-dot" /> Users{" "}
-          <span className="counter">{counts.users}</span>
-        </button>
-        <button
-          className={`tab ${tab === "games" ? "active" : ""}`}
-          onClick={() => setTab("games")}
-        >
-          <span className="tab-dot" /> Games{" "}
-          <span className="counter">{counts.games}</span>
-        </button>
-        <button
-          className={`tab ${tab === "pending" ? "active" : ""}`}
-          onClick={() => setTab("pending")}
-        >
-          <span className="tab-dot" /> Pending{" "}
-          <span className="counter">{counts.pending}</span>
-        </button>
-        <button
-          className={`tab ${tab === "comments" ? "active" : ""}`}
-          onClick={() => setTab("comments")}
-        >
-          <span className="tab-dot" /> Comments{" "}
-          <span className="counter">{counts.comments}</span>
-        </button>
-        <button
-          className={`tab ${tab === "monthly" ? "active" : ""}`}
-          onClick={() => setTab("monthly")}
-        >
-          <span className="tab-dot" /> Monthly vote{" "}
-          <span className="counter">{counts.monthly}</span>
-        </button>
-      </div>
-
-      <div className="right">
-        <div className="search-wrap">
-          <input
-            className="search"
-            placeholder={placeholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="toolbar-row">
+        <div className="tabs" role="tablist" aria-label="Admin sections">
+          <TabBtn id="users" label="Users" count={counts.users} />
+          <TabBtn id="games" label="Games" count={counts.games} />
+          <TabBtn id="pending" label="Pending Review" count={counts.pending} />
+          <TabBtn id="comments" label="Reported Comments" count={counts.comments} />
+          <TabBtn id="monthly" label="Monthly Votes" count={counts.monthly} />
         </div>
-        <button className="btn primary soft" onClick={refresh} type="button">
-          Refresh
-        </button>
+
+        <div className="toolbar-right">
+          <div className="search-wrap">
+            <input
+              className="search"
+              placeholder={placeholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="toolbar-actions" aria-label="Toolbar actions">
+            <div className="toolbar-divider" aria-hidden="true" />
+            <button
+              className={`icon-btn ${loading ? "is-loading" : ""}`}
+              onClick={refresh}
+              type="button"
+              title={loading ? "Refreshing..." : "Reload data"}
+              disabled={loading}
+              aria-label="Reload data"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M20 12a8 8 0 0 1-14.7 4.3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M4 12a8 8 0 0 1 14.7-4.3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M7 17H5v-2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M17 7h2v2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Action Menu (⋯) ---------- */
+
+function MenuItem({ danger, disabled, onClick, children, href, target }) {
+  const cls = `menu-item ${danger ? "danger" : ""} ${disabled ? "disabled" : ""}`.trim();
+
+  if (href) {
+    return (
+      <a
+        className={cls}
+        href={href}
+        target={target}
+        rel={target === "_blank" ? "noreferrer" : undefined}
+        onClick={(e) => {
+          if (disabled) {
+            e.preventDefault();
+            return;
+          }
+          onClick?.(e);
+        }}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <button className={cls} type="button" disabled={disabled} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+function MenuDivider() {
+  return <div className="menu-divider" />;
+}
+
+function ActionMenu({ menuKey, openKey, setOpenKey, align = "right", children }) {
+  const open = openKey === menuKey;
+
+  return (
+    <div className={`menu-root ${align === "left" ? "align-left" : "align-right"}`}>
+      <button
+        type="button"
+        className="kebab"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpenKey(open ? null : menuKey)}
+        title="Actions"
+      >
+        <span className="kebab-dot" />
+        <span className="kebab-dot" />
+        <span className="kebab-dot" />
+      </button>
+
+      {open && <div className="menu">{children}</div>}
     </div>
   );
 }
@@ -108,42 +235,77 @@ export default function AdminDashboard() {
   const [pendingGames, setPendingGames] = useState([]);
   const [comments, setComments] = useState([]);
 
-  const [monthlyMonth, setMonthlyMonth] = useState(() => {
-    const d = new Date();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    return `${d.getFullYear()}-${m}`; // YYYY-MM
-  });
+  const [monthlyMonth, setMonthlyMonth] = useState(() => toYYYYMM(new Date()));
   const [monthlyLeaderboard, setMonthlyLeaderboard] = useState([]);
+  const [monthlyCount, setMonthlyCount] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
-  // multiple select for users
+  // multi select (users)
   const [selectedUserIds, setSelectedUserIds] = useState([]);
+
+  // single open action menu across whole page
+  const [openMenuKey, setOpenMenuKey] = useState(null);
 
   const token = localStorage.getItem("token");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const nowYYYYMM = useMemo(() => toYYYYMM(new Date()), []);
+
+  /* close menu on click outside / Esc */
+  useEffect(() => {
+    const onDown = (e) => {
+      if (!e.target.closest(".menu-root")) setOpenMenuKey(null);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpenMenuKey(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   /* ---------- Load core data ---------- */
 
   const loadCoreData = async () => {
     setLoading(true);
     try {
-      const [u, g, p, c] = await Promise.all([
+      const [u, g, p, c, m] = await Promise.all([
         api.get("/admin/users", { withCredentials: true, headers }),
         api.get("/admin/games", { withCredentials: true, headers }),
         api.get("/admin/games/pending", { withCredentials: true, headers }),
         api.get("/admin/comments", { withCredentials: true, headers }),
+        api.get("/monthly-vote/leaderboard", { params: { month: monthlyMonth } }),
       ]);
+
       setUsers(u.data || []);
       setGames(g.data || []);
       setPendingGames(p.data || []);
       setComments(c.data || []);
+
+      const monthlyArr = m.data || [];
+      setMonthlyCount(monthlyArr.length);
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMonthlyCountOnly = async (overrideMonth) => {
+    const month = overrideMonth || monthlyMonth;
+    if (!month) return;
+    try {
+      const res = await api.get("/monthly-vote/leaderboard", { params: { month } });
+      const arr = res.data || [];
+      setMonthlyCount(arr.length);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -152,10 +314,10 @@ export default function AdminDashboard() {
     if (!month) return;
     setLoading(true);
     try {
-      const res = await api.get("/monthly-vote/leaderboard", {
-        params: { month },
-      });
-      setMonthlyLeaderboard(res.data || []);
+      const res = await api.get("/monthly-vote/leaderboard", { params: { month } });
+      const arr = res.data || [];
+      setMonthlyLeaderboard(arr);
+      setMonthlyCount(arr.length);
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -164,19 +326,32 @@ export default function AdminDashboard() {
     }
   };
 
-  const monthlyLabel = useMemo(() => {
-    if (!monthlyMonth) return "-";
-    try {
-      const d = new Date(`${monthlyMonth}-01T00:00:00`);
-      if (Number.isNaN(d.getTime())) return monthlyMonth;
-      return d.toLocaleString("en-US", {
-        month: "long",
-        year: "numeric",
-      });
-    } catch {
-      return monthlyMonth;
+  const monthlyLabel = useMemo(() => yyyyMmToLabel(monthlyMonth), [monthlyMonth]);
+
+  // ✅ Clean history: just pick a month (current year + previous year range)
+  const monthOptions = useMemo(() => {
+    // last 24 months including current
+    const arr = [];
+    const base = new Date();
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      arr.push(toYYYYMM(d));
     }
-  }, [monthlyMonth]);
+    // ensure current month first (already), keep descending
+    return arr;
+  }, []);
+
+  const monthGroups = useMemo(() => {
+    const byYear = {};
+    for (const m of monthOptions) {
+      const y = String(m).slice(0, 4);
+      if (!byYear[y]) byYear[y] = [];
+      byYear[y].push(m);
+    }
+    // order years desc
+    const years = Object.keys(byYear).sort((a, b) => Number(b) - Number(a));
+    return years.map((y) => ({ year: y, months: byYear[y] }));
+  }, [monthOptions]);
 
   useEffect(() => {
     loadCoreData();
@@ -184,18 +359,22 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (tab === "monthly") {
-      fetchMonthlyLeaderboard();
-    }
+    // keep counts synced for tab badge even when not in monthly tab
+    if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
+    else fetchMonthlyCountOnly(monthlyMonth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthlyMonth]);
+
+  useEffect(() => {
+    setOpenMenuKey(null);
+    if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const handleRefresh = () => {
-    if (tab === "monthly") {
-      fetchMonthlyLeaderboard();
-    } else {
-      loadCoreData();
-    }
+    setOpenMenuKey(null);
+    if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
+    else loadCoreData();
   };
 
   /* ---------- User actions ---------- */
@@ -210,10 +389,11 @@ export default function AdminDashboard() {
   };
 
   const suspend = async (id) => {
-    const reason = prompt("เหตุผลระงับการใช้งาน (optional)", "violation");
+    const reason = prompt("Reason (optional)", "violation");
     if (reason === null) return;
-    const daysStr = prompt("จำนวนวันระงับ (default 7)", "7");
+    const daysStr = prompt("Suspension days (default 7)", "7");
     const days = Number(daysStr || 7) || 7;
+
     const r = await api.patch(
       `/admin/users/${id}`,
       { status: "suspended", reason, days },
@@ -231,18 +411,6 @@ export default function AdminDashboard() {
     setUsers((xs) => xs.map((u) => (u._id === id ? r.data : u)));
   };
 
-  const delUser = async (id) => {
-    if (!confirm("ลบผู้ใช้และเกมทั้งหมดของเขา?")) return;
-    await api.delete(`/admin/users/${id}`, {
-      withCredentials: true,
-      headers,
-    });
-    setUsers((xs) => xs.filter((u) => u._id !== id));
-    setSelectedUserIds((ids) => ids.filter((x) => x !== id));
-    loadCoreData();
-  };
-
-  /* multiple select helpers (Users only) */
   const toggleUserSelection = (id) => {
     setSelectedUserIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -255,23 +423,19 @@ export default function AdminDashboard() {
     selectedUserIds.length > 0;
 
   const toggleSelectAllUsers = () => {
-    if (allUsersInViewSelected) {
-      setSelectedUserIds([]);
-    } else {
-      setSelectedUserIds(users.map((u) => u._id));
-    }
+    if (allUsersInViewSelected) setSelectedUserIds([]);
+    else setSelectedUserIds(users.map((u) => u._id));
   };
 
   /* ---------- Game actions ---------- */
 
   const delGame = async (game) => {
     const isPending = game.visibility === "review";
-
     if (
       !confirm(
         isPending
-          ? `ไม่อนุมัติเกม "${game.title}" และลบออกจากระบบหรือไม่?`
-          : `ลบเกม "${game.title}" ออกจากระบบหรือไม่?`
+          ? `Reject "${game.title}" and remove it from the system?`
+          : `Delete "${game.title}" from the system?`
       )
     )
       return;
@@ -280,28 +444,18 @@ export default function AdminDashboard() {
       let url = `/admin/games/${game._id}`;
 
       if (isPending) {
-        const reason = prompt(
-          "ระบุเหตุผลที่เกมไม่ผ่านการอนุมัติ (ข้อความนี้จะแนบไปในอีเมลถึงผู้พัฒนาเกม)",
-          ""
-        );
+        const reason = prompt("Reason for rejection (sent to uploader via email)", "");
         if (reason === null) return;
         const encoded = encodeURIComponent(reason);
         url += `?reason=${encoded}`;
       }
 
-      await api.delete(url, {
-        withCredentials: true,
-        headers,
-      });
+      await api.delete(url, { withCredentials: true, headers });
 
       setGames((xs) => xs.filter((g) => g._id !== game._id));
       setPendingGames((xs) => xs.filter((g) => g._id !== game._id));
 
-      alert(
-        isPending
-          ? 'เกมถูก "Reject" แล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้).'
-          : "ลบเกมเรียบร้อยแล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้)."
-      );
+      alert(isPending ? "Rejected and email sent (if available)." : "Deleted and email sent (if available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -309,10 +463,7 @@ export default function AdminDashboard() {
   };
 
   const suspendGame = async (game) => {
-    const reason = prompt(
-      "ระบุเหตุผลที่ต้องระงับเกมนี้ (จะแนบในอีเมลถึงผู้พัฒนาเกม)",
-      ""
-    );
+    const reason = prompt("Reason for suspension (sent to uploader via email)", "");
     if (reason === null) return;
 
     try {
@@ -323,9 +474,7 @@ export default function AdminDashboard() {
       );
       const updated = res.data.game || res.data;
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
-      alert(
-        "ระงับเกมเรียบร้อยแล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้)."
-      );
+      alert("Game suspended and email sent (if available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -333,8 +482,7 @@ export default function AdminDashboard() {
   };
 
   const unsuspendGame = async (game) => {
-    if (!confirm("ปลดระงับเกมนี้และทำให้กลับมาออนไลน์อีกครั้งหรือไม่?"))
-      return;
+    if (!confirm("Restore this game and make it available again?")) return;
 
     try {
       const res = await api.patch(
@@ -344,7 +492,7 @@ export default function AdminDashboard() {
       );
       const updated = res.data.game || res.data;
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
-      alert("ปลดระงับเกมเรียบร้อยแล้ว");
+      alert("Game restored.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -352,7 +500,7 @@ export default function AdminDashboard() {
   };
 
   const approveGame = async (id) => {
-    if (!confirm("อนุมัติเกมนี้เพื่อเผยแพร่สู่สาธารณะ?")) return;
+    if (!confirm("Approve this game and publish it?")) return;
     try {
       const res = await api.patch(
         `/admin/games/${id}/approve`,
@@ -368,9 +516,7 @@ export default function AdminDashboard() {
         return xs.map((g) => (g._id === id ? updated : g));
       });
 
-      alert(
-        "อนุมัติเกมเรียบร้อยแล้ว และมีการส่งอีเมลแจ้งเจ้าของเกม (ถ้าระบุอีเมลไว้)."
-      );
+      alert("Approved and email sent (if available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -380,10 +526,7 @@ export default function AdminDashboard() {
   /* ---------- Comment actions ---------- */
 
   const hideComment = async (comment) => {
-    const reason = prompt(
-      "ระบุเหตุผลที่ต้องซ่อนคอมเมนต์นี้ (ไม่เหมาะสม / ละเมิดนโยบาย ฯลฯ)",
-      ""
-    );
+    const reason = prompt("Reason for hiding this comment", "");
     if (reason === null) return;
 
     try {
@@ -393,10 +536,8 @@ export default function AdminDashboard() {
         { withCredentials: true, headers }
       );
       const updated = res.data;
-      setComments((xs) =>
-        xs.map((c) => (c._id === comment._id ? updated : c))
-      );
-      alert("ซ่อนคอมเมนต์เรียบร้อยแล้ว");
+      setComments((xs) => xs.map((c) => (c._id === comment._id ? updated : c)));
+      alert("Comment hidden.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -404,7 +545,7 @@ export default function AdminDashboard() {
   };
 
   const restoreComment = async (comment) => {
-    if (!confirm("คืนคอมเมนต์นี้ให้แสดงผลอีกครั้งหรือไม่?")) return;
+    if (!confirm("Restore this comment?")) return;
     try {
       const res = await api.patch(
         `/admin/comments/${comment._id}/restore`,
@@ -412,10 +553,8 @@ export default function AdminDashboard() {
         { withCredentials: true, headers }
       );
       const updated = res.data;
-      setComments((xs) =>
-        xs.map((c) => (c._id === comment._id ? updated : c))
-      );
-      alert("คืนคอมเมนต์เรียบร้อยแล้ว");
+      setComments((xs) => xs.map((c) => (c._id === comment._id ? updated : c)));
+      alert("Comment restored.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -423,14 +562,14 @@ export default function AdminDashboard() {
   };
 
   const deleteComment = async (comment) => {
-    if (!confirm("ลบคอมเมนต์นี้ถาวรหรือไม่?")) return;
+    if (!confirm("Permanently delete this comment?")) return;
     try {
       await api.delete(`/admin/comments/${comment._id}`, {
         withCredentials: true,
         headers,
       });
       setComments((xs) => xs.filter((c) => c._id !== comment._id));
-      alert("ลบคอมเมนต์เรียบร้อยแล้ว");
+      alert("Comment deleted.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -487,12 +626,12 @@ export default function AdminDashboard() {
     });
   }, [search, comments]);
 
-  // แสดงเฉพาะคอมเมนต์ที่ถูก report จริง ๆ
   const sortedComments = useMemo(() => {
     const reportedOnly = fComments.filter((c) => {
       const count = c.reportsCount ?? (Array.isArray(c.reports) ? c.reports.length : 0);
       return (count || 0) > 0;
     });
+
     return reportedOnly.sort((a, b) => {
       const ar = a.reportsCount || (Array.isArray(a.reports) ? a.reports.length : 0) || 0;
       const br = b.reportsCount || (Array.isArray(b.reports) ? b.reports.length : 0) || 0;
@@ -506,20 +645,15 @@ export default function AdminDashboard() {
     games: games.length,
     pending: pendingGames.length,
     comments: sortedComments.length,
-    monthly: monthlyLeaderboard.length,
+    monthly: monthlyCount,
   };
-
-  const RoleChip = ({ role }) => (
-    <Chip tone={role === "admin" ? "purple" : "gray"}>
-      {role === "admin" ? "admin" : "user"}
-    </Chip>
-  );
-
-  /* ---------- Render ---------- */
 
   return (
     <div className="admin-wrap">
-      <h1 className="admin-title">Admin</h1>
+      <div className="admin-header">
+        <h1 className="admin-title">Admin</h1>
+        <div className="admin-subtitle">Moderation & management console</div>
+      </div>
 
       <Toolbar
         tab={tab}
@@ -528,22 +662,25 @@ export default function AdminDashboard() {
         setSearch={setSearch}
         refresh={handleRefresh}
         counts={counts}
+        loading={loading}
       />
-
-      {loading && <div className="loading">Loading...</div>}
 
       {/* ===== USERS TAB ===== */}
       {tab === "users" && (
         <div className="card glass">
-          {selectedUserIds.length > 0 && (
-            <div className="bulk-indicator">
-              Selected {selectedUserIds.length} user
-              {selectedUserIds.length > 1 ? "s" : ""}
-            </div>
-          )}
+          <div className="card-head">
+            <div className="card-title">Users</div>
+            {selectedUserIds.length > 0 ? (
+              <div className="bulk-indicator">
+                Selected {selectedUserIds.length} user{selectedUserIds.length > 1 ? "s" : ""}
+              </div>
+            ) : (
+              <div className="muted tiny">Tip: Use checkbox to select</div>
+            )}
+          </div>
+
           <div className="table-wrap">
             <table className="table table-fixed pretty users-table">
-
               <thead>
                 <tr>
                   <th className="col-select">
@@ -557,18 +694,20 @@ export default function AdminDashboard() {
                   <th className="col-user">Username</th>
                   <th className="col-email">Email</th>
                   <th className="col-role">Role</th>
-                  <th className="col-status">Status</th>
-                  <th className="col-actions right">Actions</th>
+                  <th className="col-status">Account Status</th>
+                  <th className="col-actions actions-head">Actions</th>
                 </tr>
               </thead>
+
               <tbody>
                 {fUsers.map((u) => {
                   const checked = selectedUserIds.includes(u._id);
+                  const key = `users:${u._id}`;
+                  const isSuspended = u.status === "suspended";
+                  const isAdmin = u.role === "admin";
+
                   return (
-                    <tr
-                      key={u._id}
-                      className={checked ? "row-selected" : undefined}
-                    >
+                    <tr key={u._id} className={checked ? "row-selected" : undefined}>
                       <td className="cell-center">
                         <input
                           type="checkbox"
@@ -577,76 +716,83 @@ export default function AdminDashboard() {
                           onChange={() => toggleUserSelection(u._id)}
                         />
                       </td>
+
                       <td>
                         <div className="cell-main">
-                          <div className="avatar-circle">
-                            {initials(u.username || "U")}
-                          </div>
+                          <div className="avatar-circle">{initials(u.username || "U")}</div>
                           <div className="cell-texts">
                             <div className="strong">{u.username}</div>
                             <div className="muted tiny">
-                              {new Date(u.createdAt).toLocaleDateString()}
+                              Joined {new Date(u.createdAt).toLocaleDateString()}
                             </div>
                           </div>
                         </div>
                       </td>
+
                       <td>
                         <span className="ellipsis">{u.email || "-"}</span>
                       </td>
-                      <td>
-                        <RoleChip role={u.role} />
-                      </td>
-                      <td>
-                        {u.status === "active" ? (
-                          <Chip tone="green">active</Chip>
-                        ) : (
-                          <Chip tone="red">suspended</Chip>
-                        )}
-                      </td>
-                      <td className="right">
-                        <div className="actions">
-                          <div className="btn-group compact">
-                        <button
-                          className={`btn role-btn ${u.role === "user" ? "is-active user" : "user"}`}
-                          onClick={() => setRole(u._id, "user")}
-                        >
-                          User
-                        </button>
 
-                        <button
-                          className={`btn role-btn ${u.role === "admin" ? "is-active admin" : "admin"}`}
-                          onClick={() => setRole(u._id, "admin")}
-                        >
-                          Admin
-                        </button>
+                      <td>
+                        <RoleText value={u.role} />
+                      </td>
 
-                          </div>
-                          {u.status !== "suspended" ? (
-                            <button
-                              className="btn warn soft"
-                              onClick={() => suspend(u._id)}
-                            >
-                              Suspend
-                            </button>
-                          ) : (
-                            <button
-                              className="btn ok soft"
-                              onClick={() => activate(u._id)}
-                            >
-                              Activate
-                            </button>
-                          )}
-                          <button
-                            className="btn danger soft"
-                            onClick={() => delUser(u._id)}
+                      <td>
+                        <StatusText value={u.status} />
+                      </td>
+
+                      <td className="actions-cell">
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                          <div className="menu-title">User actions</div>
+
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (!isAdmin) setRole(u._id, "admin");
+                            }}
+                            disabled={isAdmin}
                           >
-                            Delete
-                          </button>
-                        </div>
+                            Set role: Admin
+                          </MenuItem>
+
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (isAdmin) setRole(u._id, "user");
+                            }}
+                            disabled={!isAdmin}
+                          >
+                            Set role: User
+                          </MenuItem>
+
+                          <MenuDivider />
+
+                          {!isSuspended ? (
+                            <MenuItem
+                              danger
+                              onClick={() => {
+                                setOpenMenuKey(null);
+                                suspend(u._id);
+                              }}
+                            >
+                              Suspend account
+                            </MenuItem>
+                          ) : (
+                            <MenuItem
+                              onClick={() => {
+                                setOpenMenuKey(null);
+                                activate(u._id);
+                              }}
+                            >
+                              Reactivate account
+                            </MenuItem>
+                          )}
+                        </ActionMenu>
                       </td>
                     </tr>
                   );
                 })}
+
                 {fUsers.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
@@ -663,86 +809,102 @@ export default function AdminDashboard() {
       {/* ===== GAMES TAB ===== */}
       {tab === "games" && (
         <div className="card glass">
+          <div className="card-head">
+            <div className="card-title">Games</div>
+            <div className="muted tiny">Manage published & suspended games</div>
+          </div>
+
           <div className="table-wrap">
-            <table className="table table-fixed pretty">
+            <table className="table table-fixed pretty games-table">
               <thead>
                 <tr>
                   <th className="col-title">Title</th>
                   <th className="col-uploader">Uploader</th>
                   <th className="col-category">Category</th>
-                  <th className="col-status">Visibility</th>
+                  <th className="col-status">Publication Status</th>
                   <th className="col-created">Created</th>
-                  <th className="col-actions right">Actions</th>
+                  <th className="col-actions actions-head">Actions</th>
                 </tr>
               </thead>
+
               <tbody>
-                {fGames.map((g) => (
-                  <tr key={g._id}>
-                    <td>
-                      {/* เอากล่อง cover เปล่า ๆ ออก เหลือแค่ชื่อ + slug */}
-                      <div className="cell-texts">
-                        <div className="strong">{g.title}</div>
-                        <div className="muted tiny ellipsis">{g.slug}</div>
-                      </div>
-                    </td>
-                    <td>{g.uploader?.username || "-"}</td>
-                    <td>
-                      <Chip tone="amber">{g.category || "all"}</Chip>
-                    </td>
-                    <td>
-                      {g.visibility === "public" && (
-                        <Chip tone="green">public</Chip>
-                      )}
-                      {g.visibility === "review" && (
-                        <Chip tone="blue">review</Chip>
-                      )}
-                      {g.visibility === "suspended" && (
-                        <Chip tone="red">suspended</Chip>
-                      )}
-                    </td>
-                    <td className="mono">
-                      {new Date(g.createdAt).toLocaleString()}
-                    </td>
-                    <td className="right">
-                      <div className="actions">
-                        <a
-                        className="btn ghost"
-                        href={`/games/${g._id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View Game
-                      </a>
+                {fGames.map((g) => {
+                  const key = `games:${g._id}`;
+                  const canSuspend = g.visibility === "public";
+                  const canRestore = g.visibility === "suspended";
 
+                  return (
+                    <tr key={g._id}>
+                      <td>
+                        <div className="cell-texts">
+                          <div className="strong">{g.title}</div>
+                          <div className="muted tiny ellipsis">{g.slug}</div>
+                        </div>
+                      </td>
 
-                        {g.visibility === "public" && (
-                          <button
-                            className="btn warn soft"
-                            onClick={() => suspendGame(g)}
+                      <td>{g.uploader?.username || "-"}</td>
+
+                      <td>
+                        <CategoryText value={g.category || "all"} />
+                      </td>
+
+                      <td>
+                        <PublicationStatusText value={g.visibility} />
+                      </td>
+
+                      <td className="mono">{new Date(g.createdAt).toLocaleString()}</td>
+
+                      <td className="actions-cell">
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                          <div className="menu-title">Game actions</div>
+
+                          <MenuItem
+                            href={`/games/${g._id}`}
+                            target="_blank"
+                            onClick={() => setOpenMenuKey(null)}
+                          >
+                            View
+                          </MenuItem>
+
+                          <MenuDivider />
+
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (canSuspend) suspendGame(g);
+                            }}
+                            disabled={!canSuspend}
                           >
                             Suspend
-                          </button>
-                        )}
+                          </MenuItem>
 
-                        {g.visibility === "suspended" && (
-                          <button
-                            className="btn ok soft"
-                            onClick={() => unsuspendGame(g)}
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (canRestore) unsuspendGame(g);
+                            }}
+                            disabled={!canRestore}
                           >
                             Restore
-                          </button>
-                        )}
+                          </MenuItem>
 
-                        <button
-                          className="btn danger soft"
-                          onClick={() => delGame(g)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <MenuDivider />
+
+                          <MenuItem
+                            danger
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              delGame(g);
+                            }}
+                          >
+                            Delete
+                          </MenuItem>
+                        </ActionMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+
                 {fGames.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
@@ -759,74 +921,93 @@ export default function AdminDashboard() {
       {/* ===== PENDING GAMES TAB ===== */}
       {tab === "pending" && (
         <div className="card glass">
+          <div className="card-head">
+            <div className="card-title">Pending Review</div>
+            <div className="muted tiny">Approve or reject submissions</div>
+          </div>
+
           <div className="table-wrap">
-            <table className="table table-fixed pretty">
+            <table className="table table-fixed pretty pending-table">
               <thead>
                 <tr>
                   <th className="col-title">Title</th>
                   <th className="col-uploader">Uploader</th>
                   <th className="col-category">Category</th>
-                  <th className="col-created">Uploaded</th>
-                  <th className="col-actions right">Actions</th>
+                  <th className="col-created">Submitted</th>
+                  <th className="col-actions actions-head">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {fPending.map((g) => (
-                  <tr key={g._id}>
-                    <td>
-                      <div className="cell-main">
-                        <div
-                          className="cover-sm gradient"
-                          style={{
-                            backgroundImage: g.coverUrl
-                              ? `url(${g.coverUrl})`
-                              : "none",
-                          }}
-                        />
-                        <div className="cell-texts">
-                          <div className="strong">{g.title}</div>
-                          <div className="muted tiny ellipsis">{g.slug}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>{g.uploader?.username || "-"}</td>
-                    <td>
-                      <Chip tone="amber">{g.category || "all"}</Chip>
-                    </td>
-                    <td className="mono">
-                      {new Date(g.createdAt).toLocaleString()}
-                    </td>
-                    <td className="right">
-                      <div className="actions">
-                        <a
-                          className="btn ghost"
-                          href={`/games/${g._id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          View Game
-                        </a>
 
-                        <button
-                          className="btn ok soft"
-                          onClick={() => approveGame(g._id)}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn danger soft"
-                          onClick={() => delGame(g)}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+              <tbody>
+                {fPending.map((g) => {
+                  const key = `pending:${g._id}`;
+                  return (
+                    <tr key={g._id}>
+                      <td>
+                        <div className="cell-main">
+                          <div
+                            className="cover-sm gradient"
+                            style={{
+                              backgroundImage: g.coverUrl ? `url(${g.coverUrl})` : "none",
+                            }}
+                          />
+                          <div className="cell-texts">
+                            <div className="strong">{g.title}</div>
+                            <div className="muted tiny ellipsis">{g.slug}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td>{g.uploader?.username || "-"}</td>
+
+                      <td>
+                        <CategoryText value={g.category || "all"} />
+                      </td>
+
+                      <td className="mono">{new Date(g.createdAt).toLocaleString()}</td>
+
+                      <td className="actions-cell">
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                          <div className="menu-title">Review actions</div>
+
+                          <MenuItem
+                            href={`/games/${g._id}`}
+                            target="_blank"
+                            onClick={() => setOpenMenuKey(null)}
+                          >
+                            View
+                          </MenuItem>
+
+                          <MenuDivider />
+
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              approveGame(g._id);
+                            }}
+                          >
+                            Approve & publish
+                          </MenuItem>
+
+                          <MenuItem
+                            danger
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              delGame(g);
+                            }}
+                          >
+                            Reject
+                          </MenuItem>
+                        </ActionMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+
                 {fPending.length === 0 && (
                   <tr>
                     <td colSpan={5} className="empty">
-                      No pending games 🎉
+                      No pending submissions 🎉
                     </td>
                   </tr>
                 )}
@@ -839,119 +1020,116 @@ export default function AdminDashboard() {
       {/* ===== COMMENTS TAB ===== */}
       {tab === "comments" && (
         <div className="card glass">
+          <div className="card-head">
+            <div className="card-title">Reported Comments</div>
+            <div className="muted tiny">Only comments with reports are shown</div>
+          </div>
+
           <div className="table-wrap">
-            <table className="table table-fixed pretty">
+            <table className="table table-fixed pretty comments-table">
               <thead>
                 <tr>
                   <th style={{ width: "18%" }}>Game</th>
                   <th style={{ width: "18%" }}>Author</th>
-                  <th style={{ width: "34%" }}>Comment</th>
+                  <th style={{ width: "36%" }}>Comment</th>
                   <th style={{ width: "10%" }}>Status</th>
-                  <th style={{ width: "14%" }}>Reports</th>
-                  <th style={{ width: "16%" }} className="right">
+                  <th style={{ width: "10%" }}>Reports</th>
+                  <th style={{ width: "8%" }} className="actions-head">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {sortedComments.map((c) => (
-                  <tr key={c._id}>
-                    <td>
-                      <div className="cell-texts">
-                        <div className="strong">
-                          {c.game?.title || "(deleted game)"}
-                        </div>
-                        {c.game?.slug && (
-                          <div className="muted tiny ellipsis">
-                            {c.game.slug}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="cell-texts">
-                        <div className="strong">
-                          {c.author?.username || "(unknown)"}
-                        </div>
-                        <div className="muted tiny ellipsis">
-                          {c.author?.email || "-"}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="ellipsis multiline">
-                        {c.content || ""}
-                      </div>
-                      {c.moderationReason && (
-                        <div className="muted tiny">
-                          Note: {c.moderationReason}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {c.status === "visible" && (
-                        <Chip tone="green">visible</Chip>
-                      )}
-                      {c.status === "hidden" && (
-                        <Chip tone="red">hidden</Chip>
-                      )}
-                      {c.status === "deleted" && (
-                        <Chip tone="gray">deleted</Chip>
-                      )}
-                    </td>
-                    <td>
-                      <Chip tone={c.reportsCount ? "amber" : "gray"}>
-                        {c.reportsCount ||
-                          (Array.isArray(c.reports) ? c.reports.length : 0)}{" "}
-                        report
-                        {(c.reportsCount ||
-                          (Array.isArray(c.reports) ? c.reports.length : 0)) ===
-                        1
-                          ? ""
-                          : "s"}
-                      </Chip>
-                    </td>
-                    <td className="right">
-                      <div className="actions">
-                        {c.game?._id && (
-                          <a
-                            className="btn ghost"
-                            href={`/games/${c.game._id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View Game
-                          </a>
-                        )}
 
-                        {c.status === "visible" && (
-                          <button
-                            className="btn warn soft"
-                            onClick={() => hideComment(c)}
+              <tbody>
+                {sortedComments.map((c) => {
+                  const key = `comments:${c._id}`;
+                  const repCount = c.reportsCount ?? (Array.isArray(c.reports) ? c.reports.length : 0);
+
+                  const canView = Boolean(c.game?._id);
+                  const isVisible = c.status === "visible";
+                  const isHidden = c.status === "hidden";
+
+                  return (
+                    <tr key={c._id}>
+                      <td>
+                        <div className="cell-texts">
+                          <div className="strong">{c.game?.title || "(deleted game)"}</div>
+                          {c.game?.slug && <div className="muted tiny ellipsis">{c.game.slug}</div>}
+                        </div>
+                      </td>
+
+                      <td>
+                        <div className="cell-texts">
+                          <div className="strong">{c.author?.username || "(unknown)"}</div>
+                          <div className="muted tiny ellipsis">{c.author?.email || "-"}</div>
+                        </div>
+                      </td>
+
+                      <td>
+                        <div className="multiline clamp-3">{c.content || ""}</div>
+                        {c.moderationReason && <div className="muted tiny">Note: {c.moderationReason}</div>}
+                      </td>
+
+                      <td>
+                        <CommentStatusText value={c.status} />
+                      </td>
+
+                      <td>
+                        <ReportsText count={repCount} />
+                      </td>
+
+                      <td className="actions-cell">
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                          <div className="menu-title">Comment actions</div>
+
+                          <MenuItem
+                            href={canView ? `/games/${c.game._id}` : undefined}
+                            target="_blank"
+                            disabled={!canView}
+                            onClick={() => setOpenMenuKey(null)}
+                          >
+                            View
+                          </MenuItem>
+
+                          <MenuDivider />
+
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (isVisible) hideComment(c);
+                            }}
+                            disabled={!isVisible}
                           >
                             Hide
-                          </button>
-                        )}
+                          </MenuItem>
 
-                        {c.status === "hidden" && (
-                          <button
-                            className="btn ok soft"
-                            onClick={() => restoreComment(c)}
+                          <MenuItem
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              if (isHidden) restoreComment(c);
+                            }}
+                            disabled={!isHidden}
                           >
                             Restore
-                          </button>
-                        )}
+                          </MenuItem>
 
-                        <button
-                          className="btn danger soft"
-                          onClick={() => deleteComment(c)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <MenuDivider />
+
+                          <MenuItem
+                            danger
+                            onClick={() => {
+                              setOpenMenuKey(null);
+                              deleteComment(c);
+                            }}
+                          >
+                            Delete
+                          </MenuItem>
+                        </ActionMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+
                 {sortedComments.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
@@ -970,104 +1148,111 @@ export default function AdminDashboard() {
         <div className="card glass">
           <div className="monthly-header">
             <div>
-              <div className="muted tiny">Monthly vote leaderboard</div>
+              <div className="muted tiny">Monthly voting leaderboard</div>
               <div className="strong">Showing {monthlyLabel}</div>
-              <div className="muted tiny">
-                แสดงอันดับเกมที่ถูกโหวตมากที่สุดในเดือนที่เลือก (สูงสุด 50 เกม)
-              </div>
+              <div className="muted tiny">Most voted games in the selected month (top 50)</div>
             </div>
 
             <div className="monthly-controls">
               <div>
-                <label className="muted tiny block" htmlFor="monthInput">
-                  Month
+                <label className="muted tiny block" htmlFor="monthSelect">
+                  Select month
                 </label>
-                <input
-                  id="monthInput"
-                  type="month"
+                <select
+                  id="monthSelect"
+                  className="bordered-input select-input"
                   value={monthlyMonth}
-                  onChange={(e) => setMonthlyMonth(e.target.value)}
-                  className="bordered-input"
-                />
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // safety: prevent future
+                    setMonthlyMonth(v > nowYYYYMM ? nowYYYYMM : v);
+                  }}
+                >
+                  {monthGroups.map((g) => (
+                    <optgroup key={g.year} label={g.year}>
+                      {g.months.map((m) => (
+                        <option key={m} value={m}>
+                          {yyyyMmToLabel(m)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
+
               <button
-                className="btn primary soft"
+                className={`btn primary soft ${loading ? "is-loading" : ""}`}
                 type="button"
-                onClick={() => fetchMonthlyLeaderboard()}
+                onClick={() => fetchMonthlyLeaderboard(monthlyMonth)}
+                disabled={loading}
+                title="Load leaderboard for selected month"
               >
-                Update
+                {loading ? "Loading..." : "Load"}
               </button>
             </div>
           </div>
 
-          <div className="table-wrap" style={{ marginTop: "8px" }}>
-            <table className="table table-fixed pretty">
+          <div className="table-wrap" style={{ marginTop: "10px" }}>
+            <table className="table table-fixed pretty monthly-table">
               <thead>
                 <tr>
                   <th style={{ width: "8%" }}>Rank</th>
-                  <th style={{ width: "32%" }}>Game</th>
+                  <th style={{ width: "36%" }}>Game</th>
                   <th style={{ width: "20%" }}>Uploader</th>
-                  <th style={{ width: "20%" }}>Visibility</th>
+                  <th style={{ width: "18%" }}>Publication Status</th>
                   <th style={{ width: "10%" }}>Votes</th>
-                  <th style={{ width: "10%" }} className="right">
+                  <th style={{ width: "8%" }} className="actions-head">
                     Actions
                   </th>
                 </tr>
               </thead>
+
               <tbody>
                 {monthlyLeaderboard.map((row, idx) => {
                   const game = row._id || row.game;
                   if (!game) return null;
-                  const uploaderName =
-                    game.uploader?.username || game.uploaderName || "-";
+
+                  const key = `monthly:${game._id || idx}`;
+                  const uploaderName = game.uploader?.username || game.uploaderName || "-";
 
                   return (
                     <tr key={game._id || idx}>
-                      <td>#{idx + 1}</td>
+                      <td className="mono">#{idx + 1}</td>
+
                       <td>
                         <div className="cell-main">
                           <div
                             className="cover-sm gradient"
                             style={{
-                              backgroundImage: game.coverUrl
-                                ? `url(${game.coverUrl})`
-                                : "none",
+                              backgroundImage: game.coverUrl ? `url(${game.coverUrl})` : "none",
                             }}
                           />
                           <div className="cell-texts">
                             <div className="strong">{game.title}</div>
-                            {game.slug && (
-                              <div className="muted tiny ellipsis">
-                                {game.slug}
-                              </div>
-                            )}
+                            {game.slug && <div className="muted tiny ellipsis">{game.slug}</div>}
                           </div>
                         </div>
                       </td>
+
                       <td>{uploaderName}</td>
+
                       <td>
-                        {game.visibility === "public" && (
-                          <Chip tone="green">public</Chip>
-                        )}
-                        {game.visibility === "review" && (
-                          <Chip tone="blue">review</Chip>
-                        )}
-                        {game.visibility === "suspended" && (
-                          <Chip tone="red">suspended</Chip>
-                        )}
+                        <PublicationStatusText value={game.visibility} />
                       </td>
+
                       <td className="mono">{row.votes}</td>
-                      <td className="right">
-                        <div className="actions">
-                          <a
-                            className="btn ghost"
+
+                      <td className="actions-cell">
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                          <div className="menu-title">Actions</div>
+                          <MenuItem
                             href={`/games/${game._id}`}
                             target="_blank"
-                            rel="noreferrer"
+                            onClick={() => setOpenMenuKey(null)}
                           >
                             View
-                          </a>
-                        </div>
+                          </MenuItem>
+                        </ActionMenu>
                       </td>
                     </tr>
                   );
@@ -1076,7 +1261,7 @@ export default function AdminDashboard() {
                 {monthlyLeaderboard.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
-                      ยังไม่มีการโหวตในเดือนนี้
+                      No votes for this month yet
                     </td>
                   </tr>
                 )}

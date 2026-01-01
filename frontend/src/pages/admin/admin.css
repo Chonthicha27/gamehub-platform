@@ -1,711 +1,799 @@
+/* frontend/src/pages/admin/admin.css */
 /* =======================================================================
-   Admin UI – Vivid Theme (dark, flat, ไม่ให้ดูเป็น template AI)
+   Admin UI – Clean Admin Console (dark) (clean history + centered actions)
    ======================================================================= */
 
-/* ---------- Tokens / Palette ---------- */
-:root{
+:root {
   --bg: #070a10;
   --panel: #0f1420;
   --panel-2: #121a2a;
-  --glass: rgba(16, 22, 34, .55);
-  --border: rgba(255,255,255,.08);
+  --glass: rgba(16, 22, 34, 0.55);
+  --border: rgba(255, 255, 255, 0.08);
+
   --txt: #eef2ff;
   --muted: #9fb0d4;
 
-  --pri: #7c4dff;
-  --pri-2: #00e1ff;
+  --pri: #38bdf8;
+  --pri-2: #22d3ee;
+
   --ok: #22c55e;
   --warn: #f59e0b;
   --danger: #ef4444;
 
   --radius: 14px;
-  --shadow-1: 0 10px 30px rgba(0,0,0,.45);
-  --shadow-2: 0 4px 16px rgba(0,0,0,.35);
+  --shadow-1: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-/* ---------- Base ---------- */
-body{
+body {
   background: var(--bg);
 }
 
-.admin-wrap{
+.admin-wrap {
   width: min(1600px, 96vw);
-  margin: 28px auto 96px;
+  margin: 26px auto 96px;
   padding: 0 20px 80px;
   color: var(--txt);
 }
 
-.admin-title{
+.admin-header {
+  margin: 6px 0 18px;
+}
+
+.admin-title {
   font-size: 36px;
-  font-weight: 900;
-  letter-spacing:.3px;
-  margin: 4px 0 18px;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+  margin: 0;
   background: linear-gradient(90deg, var(--pri), var(--pri-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.glass{
-  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)), var(--glass);
+.admin-subtitle {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.glass {
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.02)
+    ),
+    var(--glass);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
   backdrop-filter: blur(10px);
 }
 
-/* ---------- Toolbar + tabs ---------- */
-.admin-toolbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:14px;
-  margin-bottom:16px;
-  padding: 12px 16px;
+/* ---------- Toolbar ---------- */
+.admin-toolbar {
+  margin-bottom: 16px;
+  padding: 12px 14px;
 }
 
-.tabs{
-  display:flex;
-  gap:10px;
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 
-.tab{
-  display:flex;
-  align-items:center;
-  gap:8px;
+.tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow: auto;
+  padding-bottom: 2px;
+}
+
+.tabs::-webkit-scrollbar {
+  height: 8px;
+}
+.tabs::-webkit-scrollbar-thumb {
+  background: #223057;
+  border-radius: 999px;
+}
+.tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 9px 14px;
   border-radius: 999px;
-  font-weight:800;
-  color:#cfe2ff;
-  background:#12192c;
-  border:1px solid #2a3a64;
-  transition:.2s;
+  font-weight: 650;
+  color: #cfe2ff;
+  background: #12192c;
+  border: 1px solid #2a3a64;
+  transition: 0.18s ease;
   box-shadow: var(--shadow-2);
   font-size: 13px;
+  line-height: 1;
 }
 
-.tab:hover{
-  filter:brightness(1.08);
+.tab:hover {
+  filter: brightness(1.06);
   transform: translateY(-1px);
 }
 
-.tab.active{
-  color:#0a0d12;
-  border-color:transparent;
+.tab.active {
+  color: #06121a;
+  border-color: transparent;
   background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
 }
 
-.counter{
+.tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.65;
+}
+
+.tab-label {
+  white-space: nowrap;
+}
+
+.counter {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight:900;
-  background: rgba(0,0,0,.25);
-  color:#cfe2ff;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.25);
+  color: #cfe2ff;
 }
 
-.tab.active .counter{
-  color:#0a0d12;
-  background:rgba(255,255,255,.25);
+.tab.active .counter {
+  color: #06121a;
+  background: rgba(255, 255, 255, 0.28);
 }
 
-.tab-dot{
-  width:8px;
-  height:8px;
-  border-radius:999px;
-  background:currentColor;
-  opacity:.65;
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
-/* search + refresh ให้อยู่บรรทัดเดียวกัน */
-.admin-toolbar .right{
-  flex:1;
-  display:flex;
-  gap:10px;
-  justify-content:flex-end;
-  align-items:center;
+.search-wrap {
+  width: min(520px, 45vw);
+  min-width: 240px;
 }
 
-.search-wrap{
-  flex: 1;
-  max-width: 520px;
-}
-
-.search{
+.search {
   width: 100%;
   padding: 11px 14px;
   border-radius: 999px;
   background: #0c1220;
   color: var(--txt);
-  border:1px solid #2a365a;
-  outline:none;
-  transition:.15s;
+  border: 1px solid #2a365a;
+  outline: none;
+  transition: 0.15s;
   box-shadow: var(--shadow-2);
   font-size: 13px;
 }
 
-.search::placeholder{
-  color:#707ea5;
+.search::placeholder {
+  color: #707ea5;
 }
 
-.search:focus{
+.search:focus {
   border-color: #5ea7ff;
-  box-shadow: 0 0 0 3px rgba(94,167,255,.18);
+  box-shadow: 0 0 0 3px rgba(94, 167, 255, 0.18);
 }
 
-/* ---------- Table ---------- */
-.card{
-  padding: 10px 12px 14px;
+/* refresh in a separate action group (not like a search button) */
+.toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
-.table-wrap{
-  overflow:auto;
-  border-radius: var(--radius);
+.toolbar-divider {
+  width: 1px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.10);
+  margin: 0 2px 0 4px;
+  border-radius: 999px;
 }
 
-.table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0;
-  table-layout:auto;
-}
-
-.table thead th{
-  position: sticky;
-  top:0;
-  z-index:2;
-  background: linear-gradient(180deg, #13213f 0%, #101a33 100%);
-  color:#ffffff;
-  text-align:left;
-  padding:12px 14px;
-  font-size:11px;
-  letter-spacing:.2px;
-  border-bottom:1px solid rgba(255,255,255,.12);
-  text-transform: uppercase;
-}
-
-.table tbody td{
-  padding:16px;
-  border-bottom:1px solid rgba(255,255,255,.06);
-  vertical-align:middle;
-  background: #0d1426;
-}
-
-.table tbody tr:nth-child(2n) td{
-  background:#0b1020;
-}
-
-.table tbody tr:hover td{
-  background:#151f3e;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-}
-
-/* columns */
-.col-user{   width: 26%; }
-.col-email{  width: 36%; }
-.col-role{   width: 10%; }
-.col-status{ width: 10%; }
-.col-actions{ width: 18%; }
-
-.col-title{ width:30%; }
-.col-uploader{ width:16%; }
-.col-category{ width:14%; }
-.col-created{ width:18%; }
-
-.col-select{
-  width: 40px;
-  text-align:center;
-}
-
-.right{
-  text-align:right;
-}
-
-/* ---------- Cell content ---------- */
-.cell-main{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  min-width:0;
-}
-
-.cell-texts{
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-  min-width:0;
-}
-
-.cell-center{
-  text-align:center;
-}
-
-.strong{
-  font-weight:900;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.muted{
-  color:var(--muted);
-}
-
-.tiny{
-  font-size:12px;
-}
-
-.mono{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-}
-
-.ellipsis{
-  display:inline-block;
-  max-width:100%;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.multiline{
-  white-space:normal;
-}
-
-/* avatar / cover */
-.avatar-circle{
-  width:42px;
-  height:42px;
-  border-radius:50%;
-  background:#1f2e59;
-  color:#cfe3ff;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:900;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
-}
-
-.cover-sm{
-  width:42px;
-  height:42px;
-  border-radius:10px;
-  background:#1c2540 center/cover no-repeat;
-  border:1px solid #2b3a63;
-}
-
-.cover-sm.gradient{
-  background-image: radial-gradient(circle at 0 0, #7c4dff44, transparent 55%), radial-gradient(circle at 100% 100%, #00e1ff55, transparent 55%);
-}
-
-/* ---------- Chips ---------- */
-.chip{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:6px 12px;
-  border-radius:999px;
-  font-size:12px;
-  font-weight:900;
-  border: none;
-  box-shadow: 0 1px 0 rgba(0,0,0,.2) inset, 0 0 0 1px rgba(255,255,255,.05);
-  letter-spacing: .1px;
-}
-
-.chip-gray   { background:#2b3b7a; color:#ffffff; }
-.chip-green  { background:#16a34a; color:#ffffff; }
-.chip-purple { background:#6d28d9; color:#ffffff; }
-.chip-red    { background:#dc2626; color:#ffffff; }
-.chip-amber  { background:#d97706; color:#0b0b0b; }
-.chip-blue   { background:#123a5e; color:#e6f3ff; }
-
-/* ---------- Buttons ---------- */
-.btn{
-  padding:9px 12px;
-  border-radius:10px;
-  font-weight:900;
-  letter-spacing:.1px;
-  background:#121a2a;
-  color:#eaf0ff;
-  border:none;
-  transition:.2s;
-  cursor:pointer;
+.icon-btn {
+  width: 42px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f1627;
+  color: #cfe2ff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: var(--shadow-2);
-  font-size:13px;
+  transition: 0.18s ease;
 }
 
-.btn.small{
-  padding:7px 10px;
-  font-size:13px;
-}
-
-.btn.soft{
-  box-shadow:0 6px 16px rgba(0,0,0,.25);
-}
-
-.btn:hover{
-  filter:brightness(1.12);
+.icon-btn:hover {
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 
-.btn:active{
+.icon-btn:active {
   transform: translateY(0);
 }
 
-.btn.ghost{
-  background:#0f1627;
+.icon-btn:disabled,
+.icon-btn.is-loading {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 
-.btn.primary{
-  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
-  color:#081018;
+.icon-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
-.btn.ok{
-  background:#16a34a;
+/* ---------- Card ---------- */
+.card {
+  padding: 12px 12px 14px;
 }
 
-.btn.warn{
-  background:#d97706;
-  color:#0b0b0b;
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 8px 12px;
 }
 
-.btn.danger{
-  background:#dc2626;
+.card-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #eaf2ff;
 }
 
-.btn-group{
-  display:inline-flex;
-  gap:8px;
+.bulk-indicator {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
 }
 
-/* bulk selected indicator */
-.bulk-indicator{
-  margin: 2px 6px 8px;
-  font-size:12px;
+/* ---------- Table ---------- */
+.table-wrap {
+  overflow: auto;
+  border-radius: var(--radius);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+  font-size: 14px;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, #13213f 0%, #101a33 100%);
+  color: #ffffff;
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 12px;
+  letter-spacing: 0.35px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+.table tbody td {
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+  background: #0d1426;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.table tbody tr:nth-child(2n) td {
+  background: #0b1020;
+}
+
+.table tbody tr:hover td {
+  background: #151f3e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* columns */
+.col-user {
+  width: 26%;
+}
+.col-email {
+  width: 36%;
+}
+.col-role {
+  width: 10%;
+}
+.col-status {
+  width: 12%;
+}
+.col-actions {
+  width: 10%;
+}
+
+.col-title {
+  width: 30%;
+}
+.col-uploader {
+  width: 16%;
+}
+.col-category {
+  width: 14%;
+}
+.col-created {
+  width: 18%;
+}
+
+.col-select {
+  width: 40px;
+  text-align: center;
+}
+
+/* ---------- Cell content ---------- */
+.cell-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cell-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cell-center {
+  text-align: center;
+}
+
+.strong {
+  font-weight: 650;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.muted {
   color: var(--muted);
 }
 
-/* multi-select checkbox style */
-.row-checkbox{
-  width:16px;
-  height:16px;
-  border-radius:4px;
-  appearance:none;
-  -webkit-appearance:none;
-  background:#020617;
-  border:1px solid #2f3b64;
-  cursor:pointer;
-  position:relative;
+.tiny {
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.row-checkbox:checked{
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.multiline {
+  white-space: normal;
+}
+
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* avatar / cover */
+.avatar-circle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1f2e59;
+  color: #cfe3ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 650;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.cover-sm {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #1c2540 center/cover no-repeat;
+  border: 1px solid #2b3a63;
+}
+
+.cover-sm.gradient {
+  background-image: radial-gradient(circle at 0 0, #38bdf844, transparent 55%),
+    radial-gradient(circle at 100% 100%, #22d3ee55, transparent 55%);
+}
+
+/* ---------- Plain text labels ---------- */
+.meta {
+  display: inline;
+  font-weight: 650;
+  font-size: 14px;
+  letter-spacing: 0.1px;
+}
+
+.meta-dim {
+  color: #cfe2ff;
+  opacity: 0.85;
+}
+.meta-ok {
+  color: #22c55e;
+}
+.meta-warn {
+  color: #f59e0b;
+}
+.meta-bad {
+  color: #ef4444;
+}
+.meta-link {
+  color: #38bdf8;
+}
+.meta-cat {
+  color: #f59e0b;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1px;
+  background: #121a2a;
+  color: #eaf0ff;
+  border: none;
+  transition: 0.18s ease;
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  text-decoration: none;
+  user-select: none;
+}
+
+a.btn {
+  text-decoration: none !important;
+}
+
+.btn.soft {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
+  color: #06121a;
+}
+
+.btn.is-loading {
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ---------- Checkbox ---------- */
+.row-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #020617;
+  border: 1px solid #2f3b64;
+  cursor: pointer;
+  position: relative;
+}
+
+.row-checkbox:checked {
   background: linear-gradient(135deg, var(--pri), var(--pri-2));
-  border-color:transparent;
+  border-color: transparent;
 }
 
-.row-checkbox:checked::after{
-  content:"";
-  position:absolute;
-  inset:3px;
-  border-radius:3px;
-  border:2px solid #0a0d12;
-  border-top:none;
-  border-left:none;
+.row-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 3px;
+  border: 2px solid #0a0d12;
+  border-top: none;
+  border-left: none;
   transform: rotate(40deg);
 }
 
-/* highlight selected rows */
-.row-selected td{
-  background:#141b30 !important;
+.row-selected td {
+  background: #141b30 !important;
 }
 
-/* actions group */
-.actions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px 10px;
-  justify-content:flex-end;
-}
-
-/* empty / loading */
-.empty{
-  text-align:center;
-  color:var(--muted);
-  padding:20px 0;
-}
-
-.loading{
-  margin: 12px 0 14px;
+/* ---------- Empty ---------- */
+.empty {
+  text-align: center;
   color: var(--muted);
+  padding: 20px 0;
+  font-weight: 400;
 }
 
-/* monthly header */
-.monthly-header{
-  padding: 6px 6px 2px;
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-end;
-  gap:16px;
+/* ---------- Monthly header ---------- */
+.monthly-header {
+  padding: 8px 8px 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
 }
 
-.monthly-controls{
-  display:flex;
-  align-items:flex-end;
-  gap:8px;
+.monthly-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.block{
-  display:block;
+.monthly-controls .btn {
+  height: 40px;
 }
 
-.bordered-input{
-  padding:8px 10px;
-  border-radius:10px;
-  border:1px solid #26345e;
-  background:#050816;
-  color:var(--txt);
-  font-size:13px;
+.block {
+  display: block;
 }
 
-.bordered-input:focus{
-  outline:none;
-  border-color:#5ea7ff;
-  box-shadow: 0 0 0 2px rgba(94,167,255,.25);
+.bordered-input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #26345e;
+  background: #050816;
+  color: var(--txt);
+  font-size: 13px;
+  font-weight: 400;
+  height: 40px;
 }
 
-/* scrollbar */
-.table-wrap::-webkit-scrollbar{
-  height:10px;
-  width:10px;
+.bordered-input:focus {
+  outline: none;
+  border-color: #5ea7ff;
+  box-shadow: 0 0 0 2px rgba(94, 167, 255, 0.25);
 }
-.table-wrap::-webkit-scrollbar-thumb{
-  background:#223057;
-  border-radius:999px;
+
+.select-input {
+  min-width: 260px;
 }
-.table-wrap::-webkit-scrollbar-track{
-  background:transparent;
+
+/* ---------- Scrollbar ---------- */
+.table-wrap::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.table-wrap::-webkit-scrollbar-thumb {
+  background: #223057;
+  border-radius: 999px;
+}
+.table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* =======================================================================
+   ✅ Actions Menu (⋯) – centered per row (fix screenshot #3)
+   ======================================================================= */
+
+.actions-head {
+  text-align: center !important;
+}
+
+.actions-cell {
+  text-align: center !important;
+}
+
+.actions-cell .menu-root {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* keep menu position right-aligned to the button, but button is centered */
+.menu-root {
+  position: relative;
+  display: inline-block;
+}
+
+.kebab {
+  width: 42px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f1627;
+  color: #cfe2ff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-shadow: var(--shadow-2);
+  transition: 0.18s ease;
+}
+
+.kebab:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.kebab:active {
+  transform: translateY(0);
+}
+
+.kebab-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  min-width: 220px;
+  background: #0b1222;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  padding: 8px;
+  z-index: 999;
+  backdrop-filter: blur(10px);
+}
+
+.align-right .menu {
+  right: 0;
+}
+
+.align-left .menu {
+  left: 0;
+}
+
+.menu-title {
+  font-size: 12px;
+  color: rgba(233, 240, 255, 0.85);
+  padding: 6px 8px 8px;
+  font-weight: 650;
+}
+
+.menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 0;
+}
+
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: #eaf0ff;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: 0.14s ease;
+}
+
+.menu-item:hover {
+  background: rgba(56, 189, 248, 0.10);
+}
+
+.menu-item:active {
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.menu-item.danger {
+  color: #ffb4b4;
+}
+
+.menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.menu-item.disabled,
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.menu-item.disabled:hover,
+.menu-item:disabled:hover {
+  background: transparent;
 }
 
 /* ---------- Responsive ---------- */
-@media (max-width: 1140px){
-  .col-email{ width:34%; }
-  .col-actions{ width:20%; }
-  .search-wrap{ max-width:380px; }
-}
-
-@media (max-width: 980px){
-  .admin-toolbar{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-  .admin-toolbar .right{
-    width:100%;
-    justify-content:space-between;
-  }
-  .search-wrap{
-    max-width:none;
-  }
-  .col-email{ display:none; }
-  .col-user{ width:46%; }
-  .col-actions{ width:26%; }
-}
-
-@media (max-width: 640px){
-  .admin-title{ font-size:28px; }
-  .tabs{
-    flex-wrap:wrap;
+@media (max-width: 1140px) {
+  .search-wrap {
+    width: min(420px, 45vw);
   }
 }
 
+@media (max-width: 980px) {
+  .toolbar-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-/* ✅ FORCE ให้ปุ่มในคอลัมน์ Actions เท่ากัน (วางท้ายไฟล์สุด) */
-.table td .actions .btn,
-.table td .actions a.btn {
-  width: 92px !important;     /* ใช้ width ไปเลยจะเห็นผลชัดสุด */
-  height: 36px !important;
-  padding: 0 12px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
-}
+  .toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
 
-/* ให้ User/Admin ในกลุ่มเดียวกันกว้างเท่ากันด้วย */
-.table td .actions .btn-group .btn{
-  width: 78px !important;
-}
+  .search-wrap {
+    width: 100%;
+    min-width: 0;
+  }
 
-/* ===== Role buttons: User/Admin ===== */
-.btn.role-btn{
-  width: 78px;          /* ✅ ทำให้ User/Admin เท่ากัน */
-  height: 36px;         /* ✅ สูงเท่ากัน */
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  font-weight: 900;
-  box-sizing: border-box;
-  white-space: nowrap;
-  border: 1px solid rgba(255,255,255,.10);
-}
+  .toolbar-actions {
+    justify-content: flex-end;
+  }
 
-/* สีตอนยังไม่ active (เป็นโทนบาง ๆ) */
-.btn.role-btn.user{
-  background: rgba(59,130,246,.12); /* ฟ้า */
-  color: #cfe2ff;
-}
-.btn.role-btn.admin{
-  background: rgba(124,77,255,.12); /* ม่วง */
-  color: #e9ddff;
+  .col-email {
+    display: none;
+  }
+  .col-user {
+    width: 50%;
+  }
+  .col-actions {
+    width: 12%;
+  }
+
+  .select-input {
+    min-width: 220px;
+  }
 }
 
-/* สีตอน active (ชัดเหมือนปุ่มเลือก) */
-.btn.role-btn.is-active.user{
-  background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
-  color: #071018;
-  border-color: transparent;
-}
-.btn.role-btn.is-active.admin{
-  background: linear-gradient(135deg, var(--pri) 0%, var(--pri-2) 100%);
-  color: #071018;
-  border-color: transparent;
-}
-.table td .actions .btn,
-.table td .actions a.btn{
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-/* ทำให้ปุ่มทั้งหมดใน Actions เท่ากันเป๊ะ */
-.table td .actions .btn,
-.table td .actions a.btn{
-  width: 96px !important;   /* ปรับได้ เช่น 92/100 */
-  height: 36px !important;
-  padding: 0 12px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
-}
-
-/* ยกเลิกค่าที่เคยล็อก role-btn ไว้เล็กกว่า */
-.btn.role-btn{
-  width: 96px !important;
-  height: 36px !important;
-}
-:root{
-  --actW: 110px;  /* ✅ ความยาวปุ่มเท่ากันทั้งหมด */
-  --actH: 36px;
-}
-
-.table td .actions{
-  display: grid !important;
-  grid-template-columns: repeat(2, var(--actW)) !important;
-  gap: 8px 10px !important;
-  justify-content: end !important;
-  align-items: center !important;
-}
-
-/* ทำให้ปุ่มทุกปุ่มยาวเท่ากันจริง ๆ */
-.table td .actions .btn,
-.table td .actions a.btn{
-  inline-size: var(--actW) !important; /* = width แต่ชนะกว่าในบางเคส */
-  min-inline-size: var(--actW) !important;
-  max-inline-size: var(--actW) !important;
-
-  block-size: var(--actH) !important;  /* = height */
-  min-block-size: var(--actH) !important;
-  max-block-size: var(--actH) !important;
-
-  padding: 0 12px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
-}
-
-/* ให้ btn-group ไม่ส่งผลต่อความกว้าง */
-.table td .actions .btn-group{
-  display: contents !important;
-}
-/* ให้คอลัมน์ Actions ตรงกันทั้งหัวและแถว */
-.table th.col-actions,
-.table td.col-actions,
-.table th.right,
-.table td.right{
-  text-align: right !important;
-}
-
-/* กันหัวข้อ Actions ดูไม่กลาง/เหลื่อม */
-.table thead th.col-actions{
-  padding-right: 16px; /* ให้ตรงกับ td ที่ padding 16px */
-}
-/* Actions เรียงแนวตั้ง + ชิดขวา */
-.table td .actions{
-  display: flex !important;
-  flex-direction: column !important;   /* ✅ แนวตั้ง */
-  align-items: flex-end !important;    /* ชิดขวา */
-  gap: 8px !important;
-}
-
-/* ทำให้ทุกปุ่มใน Actions กว้าง/สูงเท่ากัน */
-.table td .actions .btn,
-.table td .actions a.btn{
-  width: 120px !important;             /* ✅ ปรับได้ */
-  height: 36px !important;
-  padding: 0 12px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
-}
-
-/* ให้ User/Admin ที่อยู่ใน btn-group เรียงแนวตั้งเหมือนกัน */
-.table td .actions .btn-group{
-  display: flex !important;
-  flex-direction: column !important;   /* ✅ แนวตั้ง */
-  gap: 8px !important;
-  align-items: flex-end !important;
-}
-.table td .actions .btn-group .btn{
-  width: 120px !important;
-  height: 36px !important;
-}
-:root{
-  --uActW: 120px;
-  --uActH: 36px;
-}
-
-/* ✅ เฉพาะ Users: Actions เป็น 2x2 */
-.users-table td .actions{
-  display: grid !important;
-  grid-template-columns: repeat(2, var(--uActW)) !important;
-  gap: 10px 12px !important;
-  justify-content: end !important;
-  align-items: center !important;
-}
-
-/* ✅ เฉพาะ Users: ปุ่มเท่ากัน */
-.users-table td .actions .btn,
-.users-table td .actions a.btn{
-  width: var(--uActW) !important;
-  height: var(--uActH) !important;
-  padding: 0 12px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
-}
-
-/* ✅ เฉพาะ Users: ให้ User/Admin ใน btn-group เป็น item ของ grid */
-.users-table td .actions .btn-group{
-  display: contents !important;
+@media (max-width: 640px) {
+  .admin-title {
+    font-size: 28px;
+  }
+  .menu {
+    min-width: 200px;
+  }
 }
