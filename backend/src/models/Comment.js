@@ -11,6 +11,10 @@ const ReportSchema = new Schema(
       required: true,
     },
     reason: { type: String, default: "" },
+
+    // ✅ ADD
+    description: { type: String, default: "", trim: true },
+
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -34,9 +38,7 @@ const CommentSchema = new Schema(
 
     content: { type: String, required: true, trim: true },
 
-    // ✅ NEW: รองรับ reply (คอมเมนต์ตอบกลับ)
-    // - คอมเมนต์หลัก: parentId = null
-    // - ตอบกลับ: parentId = _id ของคอมเมนต์หลัก
+    // ✅ reply support
     parentId: {
       type: Schema.Types.ObjectId,
       ref: "Comment",
@@ -44,9 +46,9 @@ const CommentSchema = new Schema(
       index: true,
     },
 
-    // visible   = แสดงผลปกติ
-    // hidden    = แอดมินซ่อนเพราะไม่เหมาะสม
-    // deleted   = ลบถาวร (จริง ๆ แล้วเราจะ delete ออกจาก DB ไปเลยในบางกรณี)
+    // visible = แสดง
+    // hidden  = ซ่อนโดยแอดมิน
+    // deleted = ลบ
     status: {
       type: String,
       enum: ["visible", "hidden", "deleted"],
@@ -54,24 +56,20 @@ const CommentSchema = new Schema(
       index: true,
     },
 
-    // เหตุผลที่แอดมินซ่อน/ปรับสถานะ
-    moderationReason: { type: String, default: "" },
-    moderatedBy: { type: Schema.Types.ObjectId, ref: "User" },
-    moderatedAt: { type: Date },
+    moderationReason: { type: String, default: "", trim: true },
+    moderatedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    moderatedAt: { type: Date, default: null },
 
-    // การรายงานจากผู้ใช้
     reports: { type: [ReportSchema], default: [] },
     reportsCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-// index เพื่อให้ query admin / เกม เร็วขึ้น
+// indexes
 CommentSchema.index({ createdAt: -1 });
 CommentSchema.index({ game: 1, createdAt: -1 });
 CommentSchema.index({ reportsCount: -1 });
-
-// ✅ NEW index: โหลด replies ต่อคอมเมนต์หลักเร็วขึ้น
 CommentSchema.index({ game: 1, parentId: 1, createdAt: 1 });
 
 module.exports = mongoose.model("Comment", CommentSchema);

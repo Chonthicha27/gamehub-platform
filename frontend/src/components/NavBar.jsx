@@ -37,11 +37,8 @@ export default function NavBar({
       <div className="nav-pro__inner">
         {/* BRAND */}
         <a className="nav-pro__brand" onClick={() => nav("/")}>
-          <div className="nav-pro__brand-x">GPX</div>
-          <div className="nav-pro__brand-sub">
-            <span>Free Online</span>
-            <span>Games</span>
-          </div>
+          <div className="nav-pro__brand-x">BU GHub</div>
+          <div className="nav-pro__brand-sub"></div>
         </a>
 
         <div className="nav-pro__right">
@@ -98,7 +95,7 @@ export default function NavBar({
               </button>
 
               <button
-                className="nav-pro__chip nav-pro__chip--primary"
+                className="nav-pro__chip nav-pro__chip--primary nav-pro__chip--logout"
                 onClick={onLogout}
               >
                 Log out
@@ -112,9 +109,29 @@ export default function NavBar({
 }
 
 const CSS = `
-/* styles เดิมของคุณคงไว้ */
+/* ทำให้ "น้ำหนักตัวอักษร" ใน navbar สม่ำเสมอ */
+.nav-pro__chip{
+  font-weight: 600;              /* เท่ากันทุกปุ่ม */
+}
+
+/* primary มักดูบางเพราะตัวหนังสือสีเข้มบนพื้นสว่าง → เพิ่มน้ำหนัก */
+.nav-pro__chip--primary{
+  font-weight: 800;              /* ให้ดูหนาเท่าปุ่มอื่นด้วยสายตา */
+  letter-spacing: .2px;
+}
+
+/* เจาะเฉพาะ Log out (ถ้าอยากให้มันหนากว่า Sign up ก็ได้) */
+.nav-pro__chip--logout{
+  font-weight: 800;
+}
+
+/* avatar */
 .nav-pro__avatar{
-  width:20px; height:20px; border-radius:999px; object-fit:cover;
-  border:2px solid rgba(255,255,255,.9); background:#0a0e12;
+  width:20px;
+  height:20px;
+  border-radius:999px;
+  object-fit:cover;
+  border:2px solid rgba(255,255,255,.9);
+  background:#0a0e12;
 }
 `;

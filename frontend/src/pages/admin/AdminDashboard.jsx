@@ -47,7 +47,6 @@ function RoleText({ value }) {
 }
 
 function PublicationStatusText({ value }) {
-  // admin-friendly wording (clearer than "Visibility")
   if (value === "public") return <span className="meta meta-ok">Published</span>;
   if (value === "review") return <span className="meta meta-warn">Pending Review</span>;
   if (value === "suspended") return <span className="meta meta-bad">Suspended</span>;
@@ -69,6 +68,157 @@ function ReportsText({ count }) {
   const n = Number(count || 0) || 0;
   if (n <= 0) return <span className="meta meta-dim">0</span>;
   return <span className="meta meta-warn">{n}</span>;
+}
+
+/* ---------- Reports (who + reason + description) helpers ---------- */
+
+function safeStr(v) {
+  return (v ?? "").toString().trim();
+}
+function shortId(id) {
+  const s = safeStr(id);
+  if (!s) return "";
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 6)}…${s.slice(-4)}`;
+}
+
+/** normalize: รองรับ reports เป็น string (ObjectId) */
+function normalizeReportEntry(r) {
+  if (!r) return null;
+  if (typeof r === "string") return { userId: r };
+  if (typeof r === "object") return r;
+  return null;
+}
+
+/** reporter object อาจมาได้หลายชื่อ */
+function pickReporter(r = {}) {
+  // ถ้ารายงานทั้งก้อนเป็น user object เลย
+  if (r && typeof r === "object" && (r.username || r.email || r.displayName)) return r;
+
+  // ชื่อที่พบบ่อย
+  const candidate =
+    r.user ||
+    r.reporter ||
+    r.by ||
+    r.owner ||
+    r.author ||
+    r.reportedBy ||
+    r.createdBy ||
+    null;
+
+  // บางทีเป็น id string
+  if (typeof candidate === "string") return null;
+
+  return candidate;
+}
+
+/** หา id ของผู้รายงานจากหลาย field */
+function getReporterId(r = {}) {
+  const direct =
+    r.userId ||
+    r.reporterId ||
+    r.byId ||
+    r.reportedById ||
+    r.createdById ||
+    r.userID ||
+    r.reporterID ||
+    r.uid ||
+    r.user_id ||
+    r.reporter_id ||
+    null;
+
+  if (direct) return direct;
+
+  if (typeof r.user === "string") return r.user;
+  if (typeof r.reporter === "string") return r.reporter;
+  if (typeof r.by === "string") return r.by;
+  if (typeof r.reportedBy === "string") return r.reportedBy;
+
+  const rep = pickReporter(r);
+  if (rep && typeof rep === "object" && rep._id) return rep._id;
+
+  return "";
+}
+
+function reporterLabel(reporter, fallbackId) {
+  if (reporter && typeof reporter === "object") {
+    const name =
+      safeStr(reporter.displayName) ||
+      safeStr(reporter.username) ||
+      safeStr(reporter.name) ||
+      safeStr(reporter.email) ||
+      safeStr(reporter._id) ||
+      "";
+    if (name) return name;
+  }
+  const fid = safeStr(fallbackId);
+  if (fid) return `User ${shortId(fid)}`;
+  return "(unknown)";
+}
+
+/* ✅ map reason ให้ตรงกับ modal ใหม่ */
+function normalizeReasonKey(raw) {
+  const s = safeStr(raw).toLowerCase();
+  if (!s) return "";
+  // รองรับหลายแบบ
+  if (s === "off topic" || s === "off-topic" || s === "off_topic") return "off_topic";
+  if (s === "spam") return "spam";
+  if (s === "offensive" || s === "abuse" || s === "harassment" || s === "hate") return "offensive";
+  if (s === "other") return "other";
+  return s; // fallback
+}
+
+function reasonPrettyLabel(key) {
+  const k = normalizeReasonKey(key);
+  if (k === "off_topic") return "Off topic";
+  if (k === "spam") return "Spam";
+  if (k === "offensive") return "Offensive";
+  if (k === "other") return "Other";
+  // fallback เป็น raw
+  return safeStr(key) || "-";
+}
+
+function reportReasonLabel(r = {}) {
+  const raw =
+    safeStr(r.reason) ||
+    safeStr(r.type) ||
+    safeStr(r.category) ||
+    safeStr(r.message) ||
+    "-";
+  return reasonPrettyLabel(raw);
+}
+
+/* ✅ NEW: ดึง Description / additional info ให้รองรับหลาย field */
+function reportDescriptionLabel(r = {}) {
+  const s =
+    safeStr(r.description) ||
+    safeStr(r.details) ||
+    safeStr(r.detail) ||
+    safeStr(r.note) ||
+    safeStr(r.text) ||
+    safeStr(r.additionalInfo) ||
+    safeStr(r.additional) ||
+    safeStr(r.more) ||
+    safeStr(r.comment) ||
+    safeStr(r.desc) ||
+    safeStr(r.reportDescription) ||
+    safeStr(r.report_note) ||
+    "";
+
+  return s;
+}
+
+function reportTimeLabel(r = {}) {
+  const t = r.createdAt || r.reportedAt || r.time || r.at;
+  if (!t) return "-";
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString();
+}
+
+function reportsArrayFromComment(c) {
+  const arr = Array.isArray(c?.reports) ? c.reports : [];
+  return arr.map(normalizeReportEntry).filter(Boolean);
 }
 
 /* ---------- Toolbar ---------- */
@@ -242,24 +392,26 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
-  // multi select (users)
   const [selectedUserIds, setSelectedUserIds] = useState([]);
-
-  // single open action menu across whole page
   const [openMenuKey, setOpenMenuKey] = useState(null);
+
+  // report details toggle
+  const [openReportKey, setOpenReportKey] = useState(null);
 
   const token = localStorage.getItem("token");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
   const nowYYYYMM = useMemo(() => toYYYYMM(new Date()), []);
 
-  /* close menu on click outside / Esc */
   useEffect(() => {
     const onDown = (e) => {
       if (!e.target.closest(".menu-root")) setOpenMenuKey(null);
     };
     const onKey = (e) => {
-      if (e.key === "Escape") setOpenMenuKey(null);
+      if (e.key === "Escape") {
+        setOpenMenuKey(null);
+        setOpenReportKey(null);
+      }
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
@@ -328,16 +480,13 @@ export default function AdminDashboard() {
 
   const monthlyLabel = useMemo(() => yyyyMmToLabel(monthlyMonth), [monthlyMonth]);
 
-  // ✅ Clean history: just pick a month (current year + previous year range)
   const monthOptions = useMemo(() => {
-    // last 24 months including current
     const arr = [];
     const base = new Date();
     for (let i = 0; i < 24; i++) {
       const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
       arr.push(toYYYYMM(d));
     }
-    // ensure current month first (already), keep descending
     return arr;
   }, []);
 
@@ -348,7 +497,6 @@ export default function AdminDashboard() {
       if (!byYear[y]) byYear[y] = [];
       byYear[y].push(m);
     }
-    // order years desc
     const years = Object.keys(byYear).sort((a, b) => Number(b) - Number(a));
     return years.map((y) => ({ year: y, months: byYear[y] }));
   }, [monthOptions]);
@@ -359,7 +507,6 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    // keep counts synced for tab badge even when not in monthly tab
     if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
     else fetchMonthlyCountOnly(monthlyMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -367,24 +514,31 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     setOpenMenuKey(null);
+    setOpenReportKey(null);
     if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const handleRefresh = () => {
     setOpenMenuKey(null);
+    setOpenReportKey(null);
     if (tab === "monthly") fetchMonthlyLeaderboard(monthlyMonth);
     else loadCoreData();
+  };
+
+  const refreshCommentsOnly = async () => {
+    try {
+      const res = await api.get("/admin/comments", { withCredentials: true, headers });
+      setComments(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   /* ---------- User actions ---------- */
 
   const setRole = async (id, role) => {
-    const r = await api.patch(
-      `/admin/users/${id}`,
-      { role },
-      { withCredentials: true, headers }
-    );
+    const r = await api.patch(`/admin/users/${id}`, { role }, { withCredentials: true, headers });
     setUsers((xs) => xs.map((u) => (u._id === id ? r.data : u)));
   };
 
@@ -403,24 +557,16 @@ export default function AdminDashboard() {
   };
 
   const activate = async (id) => {
-    const r = await api.patch(
-      `/admin/users/${id}`,
-      { status: "active" },
-      { withCredentials: true, headers }
-    );
+    const r = await api.patch(`/admin/users/${id}`, { status: "active" }, { withCredentials: true, headers });
     setUsers((xs) => xs.map((u) => (u._id === id ? r.data : u)));
   };
 
   const toggleUserSelection = (id) => {
-    setSelectedUserIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const allUsersInViewSelected =
-    users.length > 0 &&
-    users.every((u) => selectedUserIds.includes(u._id)) &&
-    selectedUserIds.length > 0;
+    users.length > 0 && users.every((u) => selectedUserIds.includes(u._id)) && selectedUserIds.length > 0;
 
   const toggleSelectAllUsers = () => {
     if (allUsersInViewSelected) setSelectedUserIds([]);
@@ -467,11 +613,7 @@ export default function AdminDashboard() {
     if (reason === null) return;
 
     try {
-      const res = await api.patch(
-        `/admin/games/${game._id}/suspend`,
-        { reason },
-        { withCredentials: true, headers }
-      );
+      const res = await api.patch(`/admin/games/${game._id}/suspend`, { reason }, { withCredentials: true, headers });
       const updated = res.data.game || res.data;
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
       alert("Game suspended and email sent (if available).");
@@ -485,11 +627,7 @@ export default function AdminDashboard() {
     if (!confirm("Restore this game and make it available again?")) return;
 
     try {
-      const res = await api.patch(
-        `/admin/games/${game._id}/unsuspend`,
-        {},
-        { withCredentials: true, headers }
-      );
+      const res = await api.patch(`/admin/games/${game._id}/unsuspend`, {}, { withCredentials: true, headers });
       const updated = res.data.game || res.data;
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
       alert("Game restored.");
@@ -502,11 +640,7 @@ export default function AdminDashboard() {
   const approveGame = async (id) => {
     if (!confirm("Approve this game and publish it?")) return;
     try {
-      const res = await api.patch(
-        `/admin/games/${id}/approve`,
-        {},
-        { withCredentials: true, headers }
-      );
+      const res = await api.patch(`/admin/games/${id}/approve`, {}, { withCredentials: true, headers });
       const updated = res.data.game || res.data;
 
       setPendingGames((xs) => xs.filter((g) => g._id !== id));
@@ -525,35 +659,32 @@ export default function AdminDashboard() {
 
   /* ---------- Comment actions ---------- */
 
-  const hideComment = async (comment) => {
-    const reason = prompt("Reason for hiding this comment", "");
-    if (reason === null) return;
+const hideComment = async (comment) => {
+  const reason = prompt("Reason for hiding this comment", "");
+  if (reason === null) return;
 
-    try {
-      const res = await api.patch(
-        `/admin/comments/${comment._id}/hide`,
-        { reason },
-        { withCredentials: true, headers }
-      );
-      const updated = res.data;
-      setComments((xs) => xs.map((c) => (c._id === comment._id ? updated : c)));
-      alert("Comment hidden.");
-    } catch (e) {
-      console.error(e);
-      alert(e?.response?.data?.message || e.message);
-    }
-  };
+  try {
+    await api.patch(
+      `/admin/comments/${comment._id}/hide`,
+      { reason },
+      { withCredentials: true, headers }
+    );
+
+    await refreshCommentsOnly();
+    alert("Comment hidden.");
+  } catch (e) {
+    console.error(e);
+    alert(e?.response?.data?.message || e.message);
+  }
+};
+
 
   const restoreComment = async (comment) => {
     if (!confirm("Restore this comment?")) return;
+
     try {
-      const res = await api.patch(
-        `/admin/comments/${comment._id}/restore`,
-        {},
-        { withCredentials: true, headers }
-      );
-      const updated = res.data;
-      setComments((xs) => xs.map((c) => (c._id === comment._id ? updated : c)));
+      await api.patch(`/admin/comments/${comment._id}/restore`, {}, { withCredentials: true, headers });
+      await refreshCommentsOnly();
       alert("Comment restored.");
     } catch (e) {
       console.error(e);
@@ -564,10 +695,7 @@ export default function AdminDashboard() {
   const deleteComment = async (comment) => {
     if (!confirm("Permanently delete this comment?")) return;
     try {
-      await api.delete(`/admin/comments/${comment._id}`, {
-        withCredentials: true,
-        headers,
-      });
+      await api.delete(`/admin/comments/${comment._id}`, { withCredentials: true, headers });
       setComments((xs) => xs.filter((c) => c._id !== comment._id));
       alert("Comment deleted.");
     } catch (e) {
@@ -616,12 +744,28 @@ export default function AdminDashboard() {
     const q = search.trim().toLowerCase();
     if (!q) return comments;
     return comments.filter((c) => {
+      const repArr = reportsArrayFromComment(c);
+
+      // ✅ include description in search text
+      const reportSearchText = repArr
+        .map((r) => {
+          const rep = pickReporter(r);
+          const repId = getReporterId(r);
+          const who = reporterLabel(rep, repId);
+          const why = reportReasonLabel(r);
+          const desc = reportDescriptionLabel(r);
+          return `${who} ${why} ${desc} ${repId}`;
+        })
+        .join(" | ")
+        .toLowerCase();
+
       return (
         c.content?.toLowerCase().includes(q) ||
         c.author?.username?.toLowerCase().includes(q) ||
         c.author?.email?.toLowerCase().includes(q) ||
         c.game?.title?.toLowerCase().includes(q) ||
-        c.status?.toLowerCase().includes(q)
+        c.status?.toLowerCase().includes(q) ||
+        reportSearchText.includes(q)
       );
     });
   }, [search, comments]);
@@ -858,11 +1002,7 @@ export default function AdminDashboard() {
                         <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
                           <div className="menu-title">Game actions</div>
 
-                          <MenuItem
-                            href={`/games/${g._id}`}
-                            target="_blank"
-                            onClick={() => setOpenMenuKey(null)}
-                          >
+                          <MenuItem href={`/games/${g._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
                             View
                           </MenuItem>
 
@@ -970,11 +1110,7 @@ export default function AdminDashboard() {
                         <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
                           <div className="menu-title">Review actions</div>
 
-                          <MenuItem
-                            href={`/games/${g._id}`}
-                            target="_blank"
-                            onClick={() => setOpenMenuKey(null)}
-                          >
+                          <MenuItem href={`/games/${g._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
                             View
                           </MenuItem>
 
@@ -1030,11 +1166,12 @@ export default function AdminDashboard() {
               <thead>
                 <tr>
                   <th style={{ width: "18%" }}>Game</th>
-                  <th style={{ width: "18%" }}>Author</th>
-                  <th style={{ width: "36%" }}>Comment</th>
-                  <th style={{ width: "10%" }}>Status</th>
-                  <th style={{ width: "10%" }}>Reports</th>
-                  <th style={{ width: "8%" }} className="actions-head">
+                  <th style={{ width: "16%" }}>Author</th>
+                  <th style={{ width: "30%" }}>Comment</th>
+                  <th style={{ width: "18%" }}>Reports detail</th>
+                  <th style={{ width: "8%" }}>Status</th>
+                  <th style={{ width: "6%" }}>Count</th>
+                  <th style={{ width: "4%" }} className="actions-head">
                     Actions
                   </th>
                 </tr>
@@ -1043,96 +1180,236 @@ export default function AdminDashboard() {
               <tbody>
                 {sortedComments.map((c) => {
                   const key = `comments:${c._id}`;
+
+                  const repArr = reportsArrayFromComment(c);
                   const repCount = c.reportsCount ?? (Array.isArray(c.reports) ? c.reports.length : 0);
 
                   const canView = Boolean(c.game?._id);
                   const isVisible = c.status === "visible";
                   const isHidden = c.status === "hidden";
 
+                  const rowReportKey = `report:${c._id}`;
+                  const open = openReportKey === rowReportKey;
+
+                  // ✅ summary: แสดง reason + description สั้น ๆ
+                  const summaryItems = repArr.slice(0, 2).map((r, idx) => {
+                    const rep = pickReporter(r);
+                    const repId = getReporterId(r);
+                    const who = reporterLabel(rep, repId);
+                    const why = reportReasonLabel(r);
+                    const desc = reportDescriptionLabel(r);
+                    const descShort = desc ? ` — ${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}` : "";
+                    return (
+                      <div key={idx} className="muted tiny ellipsis" title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "no-id"})`}>
+                        • {who} — {why}
+                        {descShort}
+                      </div>
+                    );
+                  });
+
                   return (
-                    <tr key={c._id}>
-                      <td>
-                        <div className="cell-texts">
-                          <div className="strong">{c.game?.title || "(deleted game)"}</div>
-                          {c.game?.slug && <div className="muted tiny ellipsis">{c.game.slug}</div>}
-                        </div>
-                      </td>
+                    <>
+                      <tr key={c._id}>
+                        <td>
+                          <div className="cell-texts">
+                            <div className="strong">{c.game?.title || "(deleted game)"}</div>
+                            {c.game?.slug && <div className="muted tiny ellipsis">{c.game.slug}</div>}
+                          </div>
+                        </td>
 
-                      <td>
-                        <div className="cell-texts">
-                          <div className="strong">{c.author?.username || "(unknown)"}</div>
-                          <div className="muted tiny ellipsis">{c.author?.email || "-"}</div>
-                        </div>
-                      </td>
+                        <td>
+                          <div className="cell-texts">
+                            <div className="strong">{c.author?.username || "(unknown)"}</div>
+                            <div className="muted tiny ellipsis">{c.author?.email || "-"}</div>
+                          </div>
+                        </td>
 
-                      <td>
-                        <div className="multiline clamp-3">{c.content || ""}</div>
-                        {c.moderationReason && <div className="muted tiny">Note: {c.moderationReason}</div>}
-                      </td>
+                        <td>
+                          <div className="multiline clamp-3">{c.content || ""}</div>
+                          {c.moderationReason && <div className="muted tiny">Note: {c.moderationReason}</div>}
+                        </td>
 
-                      <td>
-                        <CommentStatusText value={c.status} />
-                      </td>
+                        <td>
+                          <div className="cell-texts">
+                            {summaryItems.length > 0 ? (
+                              <>
+                                {summaryItems}
+                                {repArr.length > 2 && <div className="muted tiny">…and {repArr.length - 2} more</div>}
 
-                      <td>
-                        <ReportsText count={repCount} />
-                      </td>
+                                <button
+                                  type="button"
+                                  className="btn link tiny"
+                                  onClick={() => {
+                                    setOpenMenuKey(null);
+                                    setOpenReportKey(open ? null : rowReportKey);
+                                  }}
+                                  style={{
+                                    marginTop: "6px",
+                                    textAlign: "left",
+                                    padding: "6px 10px",
+                                    fontSize: "12px",
+                                    lineHeight: 1.1,
+                                    borderRadius: "10px",
+                                    width: "fit-content",
+                                  }}
+                                >
+                                  {open ? "Hide details" : "View details"}
+                                </button>
+                              </>
+                            ) : (
+                              <div className="muted tiny">-</div>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="actions-cell">
-                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                          <div className="menu-title">Comment actions</div>
+                        <td>
+                          <CommentStatusText value={c.status} />
+                        </td>
 
-                          <MenuItem
-                            href={canView ? `/games/${c.game._id}` : undefined}
-                            target="_blank"
-                            disabled={!canView}
-                            onClick={() => setOpenMenuKey(null)}
-                          >
-                            View
-                          </MenuItem>
+                        <td>
+                          <ReportsText count={repCount} />
+                        </td>
 
-                          <MenuDivider />
+                        <td className="actions-cell">
+                          <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
+                            <div className="menu-title">Comment actions</div>
 
-                          <MenuItem
-                            onClick={() => {
-                              setOpenMenuKey(null);
-                              if (isVisible) hideComment(c);
-                            }}
-                            disabled={!isVisible}
-                          >
-                            Hide
-                          </MenuItem>
+                            <MenuItem
+                              href={canView ? `/games/${c.game._id}` : undefined}
+                              target="_blank"
+                              disabled={!canView}
+                              onClick={() => setOpenMenuKey(null)}
+                            >
+                              View
+                            </MenuItem>
 
-                          <MenuItem
-                            onClick={() => {
-                              setOpenMenuKey(null);
-                              if (isHidden) restoreComment(c);
-                            }}
-                            disabled={!isHidden}
-                          >
-                            Restore
-                          </MenuItem>
+                            <MenuDivider />
 
-                          <MenuDivider />
+                            <MenuItem
+                              onClick={() => {
+                                setOpenMenuKey(null);
+                                if (isVisible) hideComment(c);
+                              }}
+                              disabled={!isVisible}
+                            >
+                              Hide
+                            </MenuItem>
 
-                          <MenuItem
-                            danger
-                            onClick={() => {
-                              setOpenMenuKey(null);
-                              deleteComment(c);
-                            }}
-                          >
-                            Delete
-                          </MenuItem>
-                        </ActionMenu>
-                      </td>
-                    </tr>
+                            <MenuItem
+                              onClick={() => {
+                                setOpenMenuKey(null);
+                                if (isHidden) restoreComment(c);
+                              }}
+                              disabled={!isHidden}
+                            >
+                              Restore
+                            </MenuItem>
+
+                            <MenuDivider />
+
+                            <MenuItem
+                              danger
+                              onClick={() => {
+                                setOpenMenuKey(null);
+                                deleteComment(c);
+                              }}
+                            >
+                              Delete
+                            </MenuItem>
+                          </ActionMenu>
+                        </td>
+                      </tr>
+
+                      {open && (
+                        <tr key={`${c._id}:details`} className="row-sub">
+                          <td colSpan={7}>
+                            <div
+                              className="glass"
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: "12px",
+                                border: "1px solid rgba(255,255,255,.10)",
+                              }}
+                            >
+                              <div className="strong" style={{ marginBottom: 6 }}>
+                                Report details
+                              </div>
+
+                              {repArr.length === 0 ? (
+                                <div className="muted tiny">No report details found.</div>
+                              ) : (
+                                <div style={{ display: "grid", gap: 8 }}>
+                                  {repArr.map((r, idx) => {
+                                    const rep = pickReporter(r);
+                                    const repId = getReporterId(r);
+                                    const who = reporterLabel(rep, repId);
+                                    const whoEmail =
+                                      safeStr(rep?.email) ||
+                                      safeStr(r.email) ||
+                                      safeStr(r.reporterEmail) ||
+                                      "-";
+
+                                    const why = reportReasonLabel(r);
+                                    const desc = reportDescriptionLabel(r);
+                                    const when = reportTimeLabel(r);
+
+                                    return (
+                                      <div
+                                        key={idx}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "28% 44% 28%",
+                                          gap: 10,
+                                          padding: "8px 10px",
+                                          borderRadius: "10px",
+                                          border: "1px solid rgba(255,255,255,.08)",
+                                          background: "rgba(255,255,255,.03)",
+                                        }}
+                                      >
+                                        <div className="tiny">
+                                          <div className="strong ellipsis" title={`${who} (${repId || "no-id"})`}>
+                                            {who}
+                                          </div>
+                                          <div></div>
+                                          <div className="muted tiny ellipsis" title={whoEmail}>
+                                            {whoEmail}
+                                          </div>
+                                        </div>
+
+                                        <div className="tiny">
+                                          <div className="muted tiny">Reason</div>
+                                          <div className="strong" title={why}>
+                                            {why}
+                                          </div>
+
+                                          <div className="muted tiny" style={{ marginTop: 6 }}>
+                                            Description
+                                          </div>
+                                          <div className="multiline clamp-3" title={desc || "-"}>
+                                            {desc || <span className="muted tiny">-</span>}
+                                          </div>
+                                        </div>
+
+                                        <div className="tiny">
+                                          <div className="muted tiny">Reported at</div>
+                                          <div className="mono">{when}</div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
 
                 {sortedComments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="empty">
+                    <td colSpan={7} className="empty">
                       No reported comments 🎉
                     </td>
                   </tr>
@@ -1164,7 +1441,6 @@ export default function AdminDashboard() {
                   value={monthlyMonth}
                   onChange={(e) => {
                     const v = e.target.value;
-                    // safety: prevent future
                     setMonthlyMonth(v > nowYYYYMM ? nowYYYYMM : v);
                   }}
                 >
@@ -1245,11 +1521,7 @@ export default function AdminDashboard() {
                       <td className="actions-cell">
                         <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
                           <div className="menu-title">Actions</div>
-                          <MenuItem
-                            href={`/games/${game._id}`}
-                            target="_blank"
-                            onClick={() => setOpenMenuKey(null)}
-                          >
+                          <MenuItem href={`/games/${game._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
                             View
                           </MenuItem>
                         </ActionMenu>

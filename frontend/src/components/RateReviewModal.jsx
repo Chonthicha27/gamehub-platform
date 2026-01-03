@@ -76,15 +76,6 @@ export default function RateReviewModal({ game, open, onClose, onUpdated, authed
           <div className="rv-label">Your review</div>
           <div className="rv-help">Share what you liked or disliked about this project.</div>
 
-          <div className="rv-toolbar">
-            <button onClick={() => wrap("**","**")} title="Bold">B</button>
-            <button onClick={() => wrap("_","_")} title="Italic">/</button>
-            <button onClick={() => wrap("\n- ")} title="Bullet">•</button>
-            <button onClick={() => wrap("\n1. ")} title="Numbered">1.</button>
-            <button onClick={() => wrap("[", "](https://)") } title="Link">🔗</button>
-            <button onClick={() => wrap("`","`")} title="Inline code">{"</>"}</button>
-          </div>
-
           <textarea id="rv-text" className="rv-text" rows={7}
             placeholder="Optional"
             value={text}

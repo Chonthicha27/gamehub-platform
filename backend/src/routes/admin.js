@@ -27,11 +27,7 @@ router.patch("/users/:id", async (req, res) => {
   if (role) {
     if (!["user", "admin"].includes(role))
       return res.status(400).json({ message: "invalid role" });
-    const u = await User.findByIdAndUpdate(
-      req.params.id,
-      { role },
-      { new: true }
-    );
+    const u = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
     if (!u) return res.status(404).json({ message: "User not found" });
     return res.json(u);
   }
@@ -85,9 +81,6 @@ router.delete("/users/:id", async (req, res) => {
 
 /* ===== Games ===== */
 
-/**
- * ✅ PENDING = user ขอ public จริง ๆ เท่านั้น
- */
 router.get("/games/pending", async (_req, res) => {
   const games = await Game.find({
     visibility: "review",
@@ -99,24 +92,17 @@ router.get("/games/pending", async (_req, res) => {
   res.json(games);
 });
 
-/**
- * ✅ Approve: review → public (FIXED)
- */
 router.patch("/games/:id/approve", async (req, res) => {
-  const game = await Game.findById(req.params.id).populate(
-    "uploader",
-    "username email"
-  );
+  const game = await Game.findById(req.params.id).populate("uploader", "username email");
   if (!game) return res.status(404).json({ message: "Not found" });
 
-  // อนุมัติเฉพาะกรณีที่อยู่ review และขอ public
   if (game.visibility !== "review" || game.requestedVisibility !== "public") {
     return res.status(400).json({ message: "No public request to approve" });
   }
 
   game.visibility = "public";
-  game.requestedVisibility = "";          // ✅ เคลียร์คำขอ
-  game.visibilityRequestedAt = null;      // ✅ เคลียร์เวลา
+  game.requestedVisibility = "";
+  game.visibilityRequestedAt = null;
   game.suspendedReason = "";
   game.suspendedAt = null;
   await game.save();
@@ -133,9 +119,6 @@ router.patch("/games/:id/approve", async (req, res) => {
   res.json({ game });
 });
 
-/**
- * Admin เห็นเกมทั้งหมด
- */
 router.get("/games", async (_req, res) => {
   const games = await Game.find()
     .sort("-createdAt")
@@ -144,14 +127,8 @@ router.get("/games", async (_req, res) => {
   res.json(games);
 });
 
-/**
- * Suspend
- */
 router.patch("/games/:id/suspend", async (req, res) => {
-  const game = await Game.findById(req.params.id).populate(
-    "uploader",
-    "username email"
-  );
+  const game = await Game.findById(req.params.id).populate("uploader", "username email");
   if (!game) return res.status(404).json({ message: "Not found" });
 
   game.visibility = "suspended";
@@ -162,11 +139,6 @@ router.patch("/games/:id/suspend", async (req, res) => {
   res.json({ game });
 });
 
-/**
- * ✅ Unsuspend: กลับตาม requestedVisibility
- * - ถ้าเคย public มาก่อน (requestedVisibility="public") ก็กลับ public
- * - ถ้าไม่ใช่ ก็กลับ review เป็นค่าเริ่มต้นปลอดภัย
- */
 router.patch("/games/:id/unsuspend", async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game) return res.status(404).json({ message: "Not found" });
@@ -179,14 +151,8 @@ router.patch("/games/:id/unsuspend", async (req, res) => {
   res.json({ game });
 });
 
-/**
- * DELETE game
- */
 router.delete("/games/:id", async (req, res) => {
-  const game = await Game.findById(req.params.id).populate(
-    "uploader",
-    "username email"
-  );
+  const game = await Game.findById(req.params.id).populate("uploader", "username email");
   if (!game) return res.status(404).json({ message: "Not found" });
 
   await game.deleteOne();
@@ -195,32 +161,88 @@ router.delete("/games/:id", async (req, res) => {
 
 /* ===== Comments ===== */
 
-router.get("/comments", async (req, res) => {
-  const comments = await Comment.find()
+// ✅ Admin ไม่เห็นคอมเมนต์ที่ hidden (เหมือน role อื่นๆ)
+router.get("/comments", async (_req, res) => {
+  const comments = await Comment.find({
+    status: { $ne: "deleted" },          // ไม่เอา deleted
+    reportsCount: { $gt: 0 },            // เอาเฉพาะที่มี report
+  })
     .sort("-createdAt")
     .populate("author", "username email")
     .populate("game", "title slug")
+    .populate("reports.reporter", "username email")
     .lean();
+
   res.json(comments);
 });
 
-router.patch("/comments/:id/hide", async (req, res) => {
-  const c = await Comment.findById(req.params.id);
-  if (!c) return res.status(404).json({ message: "Not found" });
 
-  c.status = "hidden";
-  c.moderationReason = req.body?.reason || "";
-  await c.save();
-  res.json(c);
+// ✅ FIX: hide ต้อง save จริง + ซ่อน replies ด้วย + เก็บคนซ่อน/เวลา
+router.patch("/comments/:id/hide", async (req, res) => {
+  const reason = (req.body?.reason || "").trim();
+  const adminId = req.user?._id;
+
+  const updated = await Comment.findByIdAndUpdate(
+    req.params.id,
+    {
+      status: "hidden",
+      moderationReason: reason,
+      moderatedBy: adminId || null,
+      moderatedAt: new Date(),
+    },
+    { new: true, runValidators: true }
+  )
+    .populate("author", "username email")
+    .populate("game", "title slug")
+    .populate("reports.reporter", "username email")
+    .lean();
+
+  if (!updated) return res.status(404).json({ message: "Not found" });
+
+  // ซ่อน replies ของคอมเมนต์นี้ด้วย
+  await Comment.updateMany(
+    { parentId: updated._id },
+    {
+      $set: {
+        status: "hidden",
+        moderationReason: reason,
+        moderatedBy: adminId || null,
+        moderatedAt: new Date(),
+      },
+    }
+  );
+
+  res.json(updated);
 });
 
+// ✅ restore ก็ restore replies ด้วย
 router.patch("/comments/:id/restore", async (req, res) => {
-  const c = await Comment.findById(req.params.id);
-  if (!c) return res.status(404).json({ message: "Not found" });
+  const adminId = req.user?._id;
 
-  c.status = "visible";
-  await c.save();
-  res.json(c);
+  const updated = await Comment.findByIdAndUpdate(
+    req.params.id,
+    {
+      status: "visible",
+      moderationReason: "",
+      moderatedBy: adminId || null,
+      moderatedAt: new Date(),
+    },
+    { new: true, runValidators: true }
+  )
+    .populate("author", "username email")
+    .populate("game", "title slug")
+    .populate("reports.reporter", "username email")
+    .lean();
+
+  if (!updated) return res.status(404).json({ message: "Not found" });
+
+  // restore replies ของคอมเมนต์นี้ด้วย
+  await Comment.updateMany(
+    { parentId: updated._id },
+    { $set: { status: "visible" } }
+  );
+
+  res.json(updated);
 });
 
 router.delete("/comments/:id", async (req, res) => {

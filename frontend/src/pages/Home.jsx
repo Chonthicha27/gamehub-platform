@@ -72,21 +72,26 @@ const MW_CSS = `
   align-self:flex-start;
   padding:9px 20px;
   border-radius:999px;
-  border:1px solid rgba(255,255,255,.18);
-  background:rgba(255,255,255,.06);
-  color:#e8edf2;
-  font-weight:800;
+  border:none;
+
+  background: linear-gradient(135deg, var(--brand), #35c4ff);
+  color:#072028;
+  font-weight:900;
   font-size:14px;
+
   cursor:pointer;
   transition:.12s ease;
-  box-shadow:none;
+  box-shadow: 0 10px 24px rgba(56,189,248,.22);
 }
-.mw-btn:hover{ background:rgba(255,255,255,.10); }
+.mw-btn:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(56,189,248,.26);
+  filter: brightness(1.03);
+}
+.mw-btn:active{
+  transform: translateY(0);
+}
 
-@media (max-width: 960px){
-  .mw-card{ flex-direction:column; }
-  .mw-cover{ flex:0 0 auto; max-width:100%; width:100%; }
-}
 `;
 
 
@@ -237,7 +242,7 @@ export default function Home({ onLoginClick, onRegisterClick }) {
       {/* HERO SEARCH */}
       <section className="hero-neo">
         <div className="container hero-neo__inner">
-          <div className="hero-neo__badge">🎮 Welcome to GPX</div>
+          <div className="hero-neo__badge">🎮 Welcome to BU GHub</div>
           <h1 className="hero-neo__title">
             Discover, Play, and{" "}
             <span className="tx-gradient">Share Indie Games</span>

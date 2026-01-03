@@ -28,14 +28,44 @@ function visibilityLabel(v) {
       return v || "—";
   }
 }
+function onlyVisibleComments(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  return list.filter((c) => String(c?.status || "visible") === "visible");
+}
 
+/** ✅ เพิ่มให้แล้ว: ใช้ใน About (Updated ...) */
 function prettyDate(iso) {
-  try {
-    const d = new Date(iso || Date.now());
-    return d.toLocaleString("en-US", { year: "numeric", month: "short", day: "2-digit" });
-  } catch {
-    return "—";
-  }
+  const d = new Date(iso || Date.now());
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" });
+}
+
+function timeAgo(iso) {
+  const t = new Date(iso || Date.now()).getTime();
+  const now = Date.now();
+  const diff = Math.max(0, now - t);
+
+  const sec = Math.floor(diff / 1000);
+  if (sec < 10) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+
+  const week = Math.floor(day / 7);
+  if (week < 4) return `${week}w ago`;
+
+  const month = Math.floor(day / 30);
+  if (month < 12) return `${month}mo ago`;
+
+  const year = Math.floor(day / 365);
+  return `${year}y ago`;
 }
 
 /** ✅ กัน cdn() ไปทับ url เต็ม */
@@ -189,6 +219,16 @@ function normalizeDraftToGame(draft) {
   };
 }
 
+/* -----------------------------
+  Report reasons (UI)
+------------------------------ */
+const REPORT_REASONS = [
+  { id: "off_topic", label: "Off topic" },
+  { id: "spam", label: "Spam" },
+  { id: "offensive", label: "Offensive" },
+  { id: "other", label: "Other" },
+];
+
 export default function GameDetail() {
   const { id: paramId } = useParams();
   const nav = useNavigate();
@@ -225,10 +265,8 @@ export default function GameDetail() {
     lastDownloadedAt: null,
   });
 
-  // ✅ Tab แบบชัด: แสดงทีละส่วน
   const [tab, setTab] = useState("about"); // about | media | comments
 
-  // ✅ “More” menu ลดปุ่มรก
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
   const moreBtnRef = useRef(null);
@@ -236,15 +274,12 @@ export default function GameDetail() {
   const trackedPlayRef = useRef(false);
   const commentsTopRef = useRef(null);
 
-  // ✅ Rating breakdown: คุมเอง + allow deep-link highlight
   const [ratingOpen, setRatingOpen] = useState(false);
   const ratingRef = useRef(null);
 
-  // ✅ Favorites (ทำในหน้านี้เลย เพื่อให้ “หน้าตา/ศัพท์” คุมได้ชัด)
   const [favBusy, setFavBusy] = useState(false);
   const [fav, setFav] = useState(false);
 
-  // ✅ UX: toast (ไม่ใช้ alert ให้ดู pro)
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const showToast = (msg) => {
@@ -262,7 +297,7 @@ export default function GameDetail() {
     trackedPlayRef.current = false;
   }, [gameId]);
 
-  // Close menu on outside click + Esc (accessibility)
+  // Close menu on outside click + Esc
   useEffect(() => {
     const onDoc = (e) => {
       if (!moreOpen) return;
@@ -285,7 +320,6 @@ export default function GameDetail() {
     };
   }, [moreOpen]);
 
-  // ✅ Keyboard: ctrl/cmd + enter to post
   const onComposeKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") submitComment();
   };
@@ -405,7 +439,7 @@ export default function GameDetail() {
         try {
           const c = await api.get(`/games/${gameId}/comments`);
           if (!alive) return;
-          setComments(Array.isArray(c.data) ? c.data : []);
+          setComments(onlyVisibleComments(c.data));
         } catch {
           if (!alive) return;
           setComments([]);
@@ -477,7 +511,6 @@ export default function GameDetail() {
     return !!list.find((gid) => String(gid) === String(game?._id));
   }, [me, game?._id]);
 
-  // sync fav state ให้ตรงกับข้อมูลจริง
   useEffect(() => {
     if (isPreview) return setFav(false);
     setFav(!!isFavorited);
@@ -493,7 +526,6 @@ export default function GameDetail() {
       if (fav) {
         await api.delete(`/users/me/favorites/${game._id}`);
         setFav(false);
-        // อัปเดต me.favorites แบบเบาๆ (กัน UI ดีเลย์)
         setMe((m) => {
           if (!m) return m;
           const next = Array.isArray(m.favorites) ? m.favorites.filter((x) => String(x) !== String(game._id)) : [];
@@ -518,8 +550,6 @@ export default function GameDetail() {
     }
   };
 
-  const kindLabel = downloadOnly ? "Downloadable" : "Playable";
-
   const ratingText = useMemo(() => {
     const avg = Number(summary?.avg || 0);
     const cnt = Number(summary?.count || 0);
@@ -537,7 +567,7 @@ export default function GameDetail() {
 
   const onDelete = async () => {
     if (isPreview) return showToast("Draft Preview — not uploaded yet.");
-    if (!confirm("Delete this game permanently?")) return;
+    if (!window.confirm("Delete this game permanently?")) return;
     setBusy(true);
     try {
       const token = localStorage.getItem("token");
@@ -593,7 +623,7 @@ export default function GameDetail() {
 
   const reportGame = async () => {
     if (isPreview) return showToast("Upload the game first.");
-    const reason = prompt("Report reason", "");
+    const reason = window.prompt("Report reason", "");
     if (reason === null) return;
 
     try {
@@ -604,20 +634,75 @@ export default function GameDetail() {
     }
   };
 
-  const reportComment = async (comment) => {
+  /* -----------------------------
+    ✅ Report Comment Modal (NEW)
+  ------------------------------ */
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null); // comment object
+  const [reportReason, setReportReason] = useState("off_topic");
+  const [reportDesc, setReportDesc] = useState("");
+  const [reportBlock, setReportBlock] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+
+  const openReportForComment = (comment) => {
     if (isPreview) return showToast("Upload the game first.");
     if (!commentsEnabled) return;
     if (!me?._id) return requireAuth("report");
 
-    const reason = prompt("Report reason", "");
-    if (reason === null) return;
+    setReportTarget(comment);
+    setReportReason("off_topic");
+    setReportDesc("");
+    setReportBlock(false);
+    setReportOpen(true);
+  };
 
+  const closeReport = () => {
+    setReportOpen(false);
+    setReportBusy(false);
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget?._id) return;
+    if (reportBusy) return;
+
+    setReportBusy(true);
     try {
-      await api.post(`/comments/${comment._id}/report`, { reason }, { withCredentials: true });
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      await api.post(
+        `/comments/${reportTarget._id}/report`,
+        {
+          reason: reportReason,
+          description: reportDesc,
+          blockAuthor: !!reportBlock,
+          gameId: game?._id,
+        },
+        { withCredentials: true, headers } // ✅ เพิ่ม headers
+      );
+
       showToast("Reported. Thank you.");
+      closeReport();
     } catch (e) {
       showToast(e?.response?.data?.message || "Report failed.");
+      setReportBusy(false);
     }
+  };
+
+
+  // Esc close (report modal)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!reportOpen) return;
+      if (e.key === "Escape") closeReport();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [reportOpen]);
+
+  const reportComment = async (comment) => {
+    // ✅ เปลี่ยนจาก prompt() → เปิด modal
+    openReportForComment(comment);
   };
 
   const deleteComment = async (comment) => {
@@ -630,40 +715,41 @@ export default function GameDetail() {
     const isMine = myId && authorId && myId === authorId;
 
     if (!isMine && !isAdmin) return showToast("You can only delete your own comment.");
-    if (!confirm("Delete this comment?")) return;
+    if (!window.confirm("Delete this comment?")) return;
 
     try {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       await api.delete(`/games/${game._id}/comments/${comment._id}`, { withCredentials: true, headers });
 
-      const remove = new Set([String(comment._id)]);
-      while (true) {
-        let changed = false;
-        for (const c of comments) {
-          const pid =
-            c?.parentId ||
-            c?.parent ||
-            c?.parentComment ||
-            c?.parentCommentId ||
-            c?.replyTo ||
-            c?.replyToId ||
-            c?.reply_to ||
-            c?.parent_id ||
-            null;
+      setComments((prev) => {
+        const remove = new Set([String(comment._id)]);
+        while (true) {
+          let changed = false;
+          for (const c of prev) {
+            const pid =
+              c?.parentId ||
+              c?.parent ||
+              c?.parentComment ||
+              c?.parentCommentId ||
+              c?.replyTo ||
+              c?.replyToId ||
+              c?.reply_to ||
+              c?.parent_id ||
+              null;
 
-          const parentKey = pid ? String(pid?._id || pid) : null;
-          if (parentKey && remove.has(parentKey) && !remove.has(String(c._id))) {
-            remove.add(String(c._id));
-            changed = true;
+            const parentKey = pid ? String(pid?._id || pid) : null;
+            if (parentKey && remove.has(parentKey) && !remove.has(String(c._id))) {
+              remove.add(String(c._id));
+              changed = true;
+            }
           }
+          if (!changed) break;
         }
-        if (!changed) break;
-      }
+        return prev.filter((x) => !remove.has(String(x._id)));
+      });
 
-      setComments((xs) => xs.filter((x) => !remove.has(String(x._id))));
-
-      if (replyToId && remove.has(String(replyToId))) {
+      if (replyToId && String(replyToId) === String(comment._id)) {
         setReplyToId(null);
         setReplyText("");
         setReplyToMeta(null);
@@ -680,7 +766,7 @@ export default function GameDetail() {
     if (!authed) return requireAuth("vote this month");
 
     if (currentMonthlyVoteGame && String(currentMonthlyVoteGame) !== String(game._id)) {
-      if (!confirm("You already voted another game this month. Switch vote to this game?")) return;
+      if (!window.confirm("You already voted another game this month. Switch vote to this game?")) return;
     }
 
     try {
@@ -727,6 +813,7 @@ export default function GameDetail() {
 
   const flatComments = useMemo(() => {
     const list = Array.isArray(comments) ? comments : [];
+
     const getParent = (c) =>
       c?.parentId ||
       c?.parent ||
@@ -740,27 +827,64 @@ export default function GameDetail() {
 
     const map = new Map();
     const roots = [];
-    for (const c of list) map.set(String(c._id), { ...c, __children: [] });
+
+    for (const c of list) {
+      map.set(String(c._id), {
+        ...c,
+        __children: [],
+        __parentKey: null,
+        __replyToHandle: "",
+        __replyToName: "",
+      });
+    }
 
     for (const c of list) {
       const node = map.get(String(c._id));
       const pid = getParent(c);
       const parentKey = pid ? String(pid?._id || pid) : null;
-      if (parentKey && map.has(parentKey)) map.get(parentKey).__children.push(node);
-      else roots.push(node);
+
+      if (parentKey && map.has(parentKey)) {
+        const parentNode = map.get(parentKey);
+
+        const pHandle =
+          parentNode?.author?.username ||
+          parentNode?.author?.displayName ||
+          parentNode?.author?.name ||
+          parentNode?.author?.email ||
+          "User";
+
+        const pName =
+          parentNode?.author?.displayName ||
+          parentNode?.author?.username ||
+          parentNode?.author?.name ||
+          parentNode?.author?.email ||
+          "User";
+
+        node.__parentKey = parentKey;
+        node.__replyToHandle = String(pHandle || "User");
+        node.__replyToName = String(pName || "User");
+
+        parentNode.__children.push(node);
+      } else {
+        roots.push(node);
+      }
     }
 
-    const sortByTime = (arr) => {
-      arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      for (const n of arr) sortByTime(n.__children);
-    };
-    sortByTime(roots);
+    const sortRoots = (arr) => arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const sortReplies = (arr) => arr.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+    sortRoots(roots);
+    for (const r of roots) sortReplies(r.__children);
 
     const out = [];
     const walk = (node, depth) => {
       out.push({ node, depth });
-      for (const ch of node.__children) walk(ch, Math.min(2, depth + 1));
+      const nextDepth = Math.min(2, depth + 1);
+      const children = Array.isArray(node.__children) ? [...node.__children] : [];
+      sortReplies(children);
+      for (const ch of children) walk(ch, nextDepth);
     };
+
     roots.forEach((r) => walk(r, 0));
     return out;
   }, [comments]);
@@ -784,16 +908,20 @@ export default function GameDetail() {
   const metaCategory = game.category || "—";
   const commentsCount = comments.length || 0;
   const votedOnThisGame = votedThisMonth && String(currentMonthlyVoteGame) === String(game._id);
-
-  // ✅ label ที่ชัดกับผู้ใช้
   const monthlyVoteLabel = votedOnThisGame ? "Voted this month ✓" : "Vote this month";
+
+  const reportAuthorName =
+    reportTarget?.author?.displayName ||
+    reportTarget?.author?.username ||
+    reportTarget?.author?.name ||
+    reportTarget?.author?.email ||
+    "User";
 
   return (
     <div className="container section">
       <StyleGameDetail />
 
       <div className="gd-wrap">
-        {/* ✅ FRAME */}
         <section className="gd-frame">
           {playable && !downloadOnly && fileSrc && !isPreview ? (
             <iframe
@@ -824,7 +952,6 @@ export default function GameDetail() {
           </div>
         </section>
 
-        {/* ✅ Header: summary + actions + tabs */}
         <section className="gd-titlebar" aria-label="Game header">
           <div className="gd-titleLeft">
             <div className="gd-title">{game.title}</div>
@@ -858,31 +985,13 @@ export default function GameDetail() {
             </div>
 
             <div className="gd-tabs" role="tablist" aria-label="Sections">
-              <button
-                className={`gd-tab ${tab === "about" ? "is-on" : ""}`}
-                onClick={() => setTab("about")}
-                role="tab"
-                aria-selected={tab === "about"}
-                type="button"
-              >
+              <button className={`gd-tab ${tab === "about" ? "is-on" : ""}`} onClick={() => setTab("about")} role="tab" aria-selected={tab === "about"} type="button">
                 About
               </button>
-              <button
-                className={`gd-tab ${tab === "media" ? "is-on" : ""}`}
-                onClick={() => setTab("media")}
-                role="tab"
-                aria-selected={tab === "media"}
-                type="button"
-              >
+              <button className={`gd-tab ${tab === "media" ? "is-on" : ""}`} onClick={() => setTab("media")} role="tab" aria-selected={tab === "media"} type="button">
                 Media
               </button>
-              <button
-                className={`gd-tab ${tab === "comments" ? "is-on" : ""}`}
-                onClick={() => setTab("comments")}
-                role="tab"
-                aria-selected={tab === "comments"}
-                type="button"
-              >
+              <button className={`gd-tab ${tab === "comments" ? "is-on" : ""}`} onClick={() => setTab("comments")} role="tab" aria-selected={tab === "comments"} type="button">
                 Comments {commentsCount > 0 ? <span className="gd-badge">{commentsCount}</span> : null}
               </button>
             </div>
@@ -890,7 +999,6 @@ export default function GameDetail() {
 
           <div className="gd-titleRight">
             <div className="gd-actions" aria-label="Primary actions">
-              {/* ✅ Favorites: ใช้คำเดียวกับ Navbar และหน้าตาเหมือนปุ่มอื่น */}
               <button
                 className={`gd-btn ${fav ? "is-on" : ""}`}
                 onClick={toggleFavorite}
@@ -909,30 +1017,17 @@ export default function GameDetail() {
                 {fav ? "★ In Favorites" : "☆ Add to Favorites"}
               </button>
 
-              {/* ✅ Monthly vote wording ชัดเจน */}
               <button
                 className={`gd-btn ${votedOnThisGame ? "is-on" : ""}`}
                 onClick={voteMonthly}
-                title={
-                  votedOnThisGame
-                    ? "You already voted for this game this month."
-                    : "Vote for this game (once per month)."
-                }
+                title={votedOnThisGame ? "You already voted for this game this month." : "Vote for this game (once per month)."}
                 type="button"
               >
                 {monthlyVoteLabel}
               </button>
 
-              {/* ✅ More menu */}
               <div className="gd-more" ref={moreRef}>
-                <button
-                  className="gd-btn"
-                  onClick={() => setMoreOpen((v) => !v)}
-                  type="button"
-                  aria-haspopup="menu"
-                  aria-expanded={moreOpen}
-                  ref={moreBtnRef}
-                >
+                <button className="gd-btn" onClick={() => setMoreOpen((v) => !v)} type="button" aria-haspopup="menu" aria-expanded={moreOpen} ref={moreBtnRef}>
                   More ▾
                 </button>
 
@@ -942,19 +1037,9 @@ export default function GameDetail() {
                       Copy link
                     </button>
 
-                    <button
-                      className="gd-menuItem"
-                      onClick={() => {
-                        setMoreOpen(false);
-                        reportGame();
-                      }}
-                      type="button"
-                      role="menuitem"
-                    >
-                      Report game
-                    </button>
 
-                    {(isOwner || isAdmin) && !isPreview ? (
+
+                    {(me && (String(me._id) === String(game?.uploader?._id || game?.uploader) || me?.role === "admin")) && !isPreview ? (
                       <>
                         <div className="gd-menuSep" />
                         <button
@@ -987,18 +1072,14 @@ export default function GameDetail() {
               </div>
             </div>
 
-            <div className="gd-miniHint">
-              {downloadOnly ? "Tip: Download from ⬇ on the game frame." : "Tip: Fullscreen from ⛶ on the game frame."}
-            </div>
+            <div className="gd-miniHint">{downloadOnly ? "Tip: Download from ⬇ on the game frame." : "Tip: Fullscreen from ⛶ on the game frame."}</div>
           </div>
         </section>
 
-        {/* ✅ Content: show one section at a time */}
         {tab === "about" ? (
           <section className="gd-card" role="tabpanel" aria-label="About">
             <div className="gd-cardTitle">Game description</div>
 
-            {/* ✅ ทำให้ชัดว่า “นี่คือข้อมูล” ไม่ใช่ปุ่ม */}
             <div className="gd-aboutMeta" aria-label="Game meta">
               <span className="gd-metaTag" title="Category">
                 <span className="gd-metaKey">Category</span>
@@ -1007,7 +1088,7 @@ export default function GameDetail() {
 
               <span className="gd-metaTag gd-metaTag--soft" title="Type">
                 <span className="gd-metaKey">Type</span>
-                <span className="gd-metaVal">{kindLabel}</span>
+                <span className="gd-metaVal">{downloadOnly ? "Downloadable" : "Playable"}</span>
               </span>
 
               <span className="gd-metaTag gd-metaTag--soft" title="Visibility">
@@ -1021,14 +1102,8 @@ export default function GameDetail() {
             {uploader ? (
               <div className="gd-uploader">
                 <Link className="gd-miniUser" to={isPreview ? "#" : `/users/${String(uploaderId)}`}>
-                  <Img
-                    src={uploader.avatarUrl || uploader.avatar || uploader.photoURL || ""}
-                    alt="user"
-                    className="gd-miniUser__av"
-                  />
-                  <span className="gd-miniUser__name">
-                    {uploader.displayName || uploader.username || uploader.name || "unknown"}
-                  </span>
+                  <Img src={uploader.avatarUrl || uploader.avatar || uploader.photoURL || ""} alt="user" className="gd-miniUser__av" />
+                  <span className="gd-miniUser__name">{uploader.displayName || uploader.username || uploader.name || "unknown"}</span>
                 </Link>
 
                 {tags?.length ? (
@@ -1046,51 +1121,49 @@ export default function GameDetail() {
             {game.tagline ? <div className="gd-tagline">{game.tagline}</div> : null}
             <div className="gd-text">{game.description?.trim() || "No description."}</div>
 
-            {/* ✅ Rating Breakdown + Rate button อยู่กับหลอด */}
-            <details
-              className={`gd-details ${ratingOpen ? "is-open" : ""}`}
-              open={ratingOpen}
-              onToggle={(e) => setRatingOpen(e.currentTarget.open)}
-              ref={ratingRef}
-            >
-              <summary className="gd-detailsSum">Rating breakdown</summary>
+            {authed ? (
+              <details
+                className={`gd-details ${ratingOpen ? "is-open" : ""}`}
+                open={ratingOpen}
+                onToggle={(e) => setRatingOpen(e.currentTarget.open)}
+                ref={ratingRef}
+              >
+                <summary className="gd-detailsSum">Rating breakdown</summary>
 
-              <div className="gd-rateRow">
-                <div className="gd-rateRow__left">
-                  <div className="gd-rateRow__title">How was it?</div>
-                  <div className="gd-rateRow__sub">
-                    {authed ? "Rate this game to help others." : "Sign in to rate this game."}
+                <div className="gd-rateRow">
+                  <div className="gd-rateRow__left">
+                    <div className="gd-rateRow__title">How was it?</div>
+                    <div className="gd-rateRow__sub">Rate this game to help others.</div>
                   </div>
+
+                  <button
+                    className="gd-btnPrimary gd-btnPrimary--ghost"
+                    type="button"
+                    onClick={() => {
+                      if (isPreview) return showToast("Upload the game first.");
+                      setOpenRate(true);
+                    }}
+                  >
+                    Rate this game
+                  </button>
                 </div>
 
-                <button
-                  className="gd-btnPrimary gd-btnPrimary--ghost"
-                  type="button"
-                  onClick={() => {
-                    if (isPreview) return showToast("Upload the game first.");
-                    if (!authed) return requireAuth("rate");
-                    setOpenRate(true);
-                  }}
-                >
-                  Rate this game
-                </button>
-              </div>
-
-              <div className="gd-rbars">
-                {[5, 4, 3, 2, 1].map((star) => {
-                  const row = ratingBars[5 - star] || { v: 0, pct: 0 };
-                  return (
-                    <div key={star} className="gd-rrow">
-                      <div className="gd-rrow__left">{star}★</div>
-                      <div className="gd-rrow__bar">
-                        <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
+                <div className="gd-rbars">
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const row = ratingBars[5 - star] || { v: 0, pct: 0 };
+                    return (
+                      <div key={star} className="gd-rrow">
+                        <div className="gd-rrow__left">{star}★</div>
+                        <div className="gd-rrow__bar">
+                          <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
+                        </div>
+                        <div className="gd-rrow__right">{row.v}</div>
                       </div>
-                      <div className="gd-rrow__right">{row.v}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
+                    );
+                  })}
+                </div>
+              </details>
+            ) : null}
           </section>
         ) : null}
 
@@ -1162,7 +1235,6 @@ export default function GameDetail() {
                       onKeyDown={onComposeKeyDown}
                     />
                     <div className="gd-composeBar">
-                      <div className="gd-composeHint">Tip: Ctrl/⌘ + Enter to post</div>
                       <button className="gd-btnPrimary" onClick={submitComment} type="button">
                         Post
                       </button>
@@ -1170,7 +1242,7 @@ export default function GameDetail() {
                   </div>
                 )}
 
-                <div className="gd-commentList">
+                <div className="gd-commentList gd-commentList--best">
                   {flatComments.length === 0 ? (
                     <div className="gd-note">No comments yet.</div>
                   ) : (
@@ -1217,7 +1289,74 @@ export default function GameDetail() {
           onUpdated={(sum) => setSummary((s) => ({ ...s, ...sum }))}
         />
 
-        {/* ✅ Toast */}
+        {/* ✅ Report Comment Modal UI (เหมือนภาพ) */}
+        {reportOpen ? (
+          <div
+            className="gd-modalBack"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Report comment"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) closeReport();
+            }}
+          >
+            <div className="gd-modalCard" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="gd-modalTop">
+                <div className="gd-modalTitle">Report post by {reportAuthorName}</div>
+                <button className="gd-modalX" type="button" onClick={closeReport} aria-label="Close">
+                  ×
+                </button>
+              </div>
+
+              <div className="gd-modalBody">
+                <div className="gd-modalNote">
+                  Reports will be viewed by the moderators of the board. You can also block this person to hide all their posts from you.
+                </div>
+
+                <div className="gd-field">
+                  <div className="gd-fieldLabel">Reason</div>
+                  <div className="gd-radioCol" role="radiogroup" aria-label="Report reason">
+                    {REPORT_REASONS.map((r) => (
+                      <label key={r.id} className="gd-radio">
+                        <input
+                          type="radio"
+                          name="reportReason"
+                          value={r.id}
+                          checked={reportReason === r.id}
+                          onChange={() => setReportReason(r.id)}
+                        />
+                        <span>{r.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="gd-field">
+                  <div className="gd-fieldLabel">
+                    Description <span className="gd-fieldHint">— Any additional information</span>
+                  </div>
+                  <textarea
+                    className="gd-modalTextarea"
+                    rows={4}
+                    value={reportDesc}
+                    onChange={(e) => setReportDesc(e.target.value)}
+                    placeholder=""
+                  />
+                </div>
+
+                <div className="gd-modalActions">
+                  <button className="gd-btn" type="button" onClick={closeReport} disabled={reportBusy}>
+                    Cancel
+                  </button>
+                  <button className="gd-dangerBtn" type="button" onClick={submitReport} disabled={reportBusy}>
+                    {reportBusy ? "Submitting…" : "Submit report"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {toast ? (
           <div className="gd-toast" role="status" aria-live="polite">
             {toast}
@@ -1229,7 +1368,7 @@ export default function GameDetail() {
 }
 
 /* -----------------------------
-  Comment Row
+  Comment Row (Best: no connector line, clear replying-to)
 ------------------------------ */
 function CommentRow({
   c,
@@ -1255,7 +1394,9 @@ function CommentRow({
   const canDelete = isMine || isAdmin;
   const canReport = authed && !isMine;
 
-  const authorName = c.author?.username || c.author?.name || "User";
+  const authorName = c.author?.displayName || c.author?.username || c.author?.name || c.author?.email || "User";
+  const authorHandle = c.author?.username || authorName;
+
   const avatar = c.author?.avatarUrl || c.author?.avatar || c.author?.photoURL || "";
 
   const active = replyToId && String(replyToId) === String(c._id);
@@ -1265,7 +1406,7 @@ function CommentRow({
     if (active) requestAnimationFrame(() => replyInputRef.current?.focus());
   }, [active]);
 
-  const time = new Date(c.createdAt || Date.now()).toLocaleString("en-US", {
+  const timeFull = new Date(c.createdAt || Date.now()).toLocaleString("en-US", {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -1273,25 +1414,33 @@ function CommentRow({
     minute: "2-digit",
   });
 
+  const timeShort = timeAgo(c.createdAt);
+  const replyingToHandle = String(c.__replyToHandle || "").trim();
+
   return (
-    <div className="gd-crow" style={{ ["--indent"]: depth }}>
-      <div className="gd-crow__card">
-        <Img className="gd-crow__av" src={avatar} alt="" fallback={FALLBACK_AVATAR_DATA} />
-        <div className="gd-crow__body">
-          <div className="gd-crow__head">
-            <div className="gd-crow__name">{authorName}</div>
-            <div className="gd-crow__time">{time}</div>
+    <div className={`gd-crow ${depth > 0 ? "is-reply" : ""}`} style={{ ["--indent"]: depth }}>
+      <div className="gd-thread">
+        <div className="gd-thread__avWrap">
+          <Img className="gd-thread__av" src={avatar} alt="" fallback={FALLBACK_AVATAR_DATA} />
+        </div>
+
+        <div className="gd-thread__main">
+          <div className="gd-bubble">
+            <div className="gd-bubble__top">
+              <span className="gd-bubble__name">{authorName}</span>
+              {depth > 0 && replyingToHandle ? <span className="gd-replyInline">replying to @{replyingToHandle}</span> : null}
+            </div>
+
+            <div className="gd-bubble__text">{c.content?.trim() || <span className="gd-muted">(no text)</span>}</div>
           </div>
 
-          <div className="gd-crow__text">{c.content?.trim() || <span className="gd-muted">(no text)</span>}</div>
-
-          <div className="gd-crow__actions">
+          <div className="gd-metaRow">
             {authed ? (
               <button
-                className="gd-linkBtn"
+                className="gd-miniAction"
                 onClick={() =>
                   onReply({
-                    username: authorName,
+                    username: authorHandle,
                     preview: (c.content || "").trim().slice(0, 120),
                   })
                 }
@@ -1301,23 +1450,28 @@ function CommentRow({
               </button>
             ) : null}
 
+            {canReport ? (
+              <button className="gd-miniAction gd-miniAction--warn" onClick={onReport} type="button">
+                Report
+              </button>
+            ) : null}
+
             {authed && canDelete ? (
-              <button className="gd-linkBtn gd-linkBtn--danger" onClick={onDelete} type="button">
+              <button className="gd-miniAction gd-miniAction--danger" onClick={onDelete} type="button">
                 Delete
               </button>
             ) : null}
 
-            {canReport ? (
-              <button className="gd-linkBtn gd-linkBtn--warn" onClick={onReport} type="button">
-                Report
-              </button>
-            ) : null}
+            <span className="gd-metaRow__dot">·</span>
+            <span className="gd-metaRow__time" title={timeFull}>
+              {timeShort}
+            </span>
           </div>
 
           {active ? (
-            <div className="gd-replyBox">
+            <div className="gd-replyBox gd-replyBox--best">
               <div className="gd-replyMeta">
-                Replying to <b>@{replyToMeta?.username || "User"}</b>
+                Replying to <b>@{replyToMeta?.username || replyingToHandle || "User"}</b>
                 {replyToMeta?.preview ? <span className="gd-replyPreview">“{replyToMeta.preview}”</span> : null}
               </div>
               <textarea
@@ -1346,7 +1500,7 @@ function CommentRow({
 }
 
 /* -----------------------------
-  CSS: โทนเดียวกับเว็บ + UX clearer (ปรับแล้ว)
+  CSS: โทนเดียวกับเว็บ + Best comments (no connector line)
 ------------------------------ */
 function StyleGameDetail() {
   return (
@@ -1360,6 +1514,8 @@ function StyleGameDetail() {
   --gd-muted: var(--muted, #A9B1BB);
   --gd-brand: var(--brand, #38BDF8);
   --gd-shadow: var(--shadow, 0 24px 60px rgba(0,0,0,.55));
+  --best-step: 26px;
+  --best-bar: rgba(255,255,255,.14);
 }
 
 .gd-wrap{ max-width: 980px; margin: 0 auto; padding: 0 12px; color: var(--gd-text); }
@@ -1422,7 +1578,6 @@ function StyleGameDetail() {
 @media (max-width: 520px){
   .gd-iframe,.gd-cover{ height: 300px; }
 }
-
 .gd-frameCorner{
   position:absolute;
   right: 10px;
@@ -1477,17 +1632,16 @@ function StyleGameDetail() {
   display:inline-flex;
   align-items:center;
   gap:6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.14);
+  padding: 0;                      /* ✅ ไม่ให้เป็นแคปซูล */
+  border-radius: 0;
+
+  border: 0 !important;
+  background: transparent !important;
 }
+
 .gd-chipMeta b{ color: rgba(255,255,255,.92); font-weight: 900; }
 
-.gd-chipMetaBtn{
-  cursor:pointer;
-  transition: transform .12s ease;
-}
+.gd-chipMetaBtn{ cursor:pointer; transition: transform .12s ease; }
 .gd-chipMetaBtn:hover{ border-color: rgba(56,189,248,.40); transform: translateY(-1px); }
 
 .gd-titleRight{ display:flex; flex-direction:column; align-items:flex-end; gap: 8px; }
@@ -1495,7 +1649,6 @@ function StyleGameDetail() {
 
 .gd-actions{ display:flex; flex-wrap:wrap; gap: 8px; align-items:center; }
 
-/* ✅ ปุ่มหลัก: ให้ดู “โปร” มากขึ้น + focus ชัด */
 .gd-btn{
   border: 1px solid rgba(255,255,255,.14);
   background: rgba(255,255,255,.06);
@@ -1519,35 +1672,7 @@ function StyleGameDetail() {
   background: rgba(56,189,248,.12);
 }
 
-/* ✅ ทำให้ FavoriteButton ที่ใช้ class pfx-chip “หน้าตาเหมือน gd-btn” */
-.gd-actions .pfx-chip{
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.06);
-  color: rgba(255,255,255,.92);
-  font-weight: 900;
-  padding: 8px 12px;
-  border-radius: 12px;
-  cursor:pointer;
-  text-decoration:none;
-  transition: transform .12s ease, border-color .12s ease, background .12s ease;
-}
-.gd-actions .pfx-chip:hover{ border-color: rgba(56,189,248,.40); transform: translateY(-1px); }
-.gd-actions .pfx-chip:active{ transform: translateY(0px); }
-.gd-actions .pfx-chip:disabled{ opacity:.6; cursor:not-allowed; transform:none; }
-.gd-actions .pfx-chip:focus-visible{
-  outline: 2px solid rgba(56,189,248,.22);
-  box-shadow: 0 0 0 6px rgba(56,189,248,.10);
-}
-/* เมื่อ favorited (pfx-chip--primary) ให้ดูเป็น state เหมือนปุ่ม is-on */
-.gd-actions .pfx-chip.pfx-chip--primary{
-  border-color: rgba(56,189,248,.55);
-  background: rgba(56,189,248,.12);
-}
-
-.gd-miniHint{
-  font-size: 12px;
-  color: rgba(255,255,255,.60);
-}
+.gd-miniHint{ font-size: 12px; color: rgba(255,255,255,.60); }
 
 /* Tabs */
 .gd-tabs{
@@ -1614,10 +1739,6 @@ function StyleGameDetail() {
   font-weight: 900;
 }
 .gd-menuItem:hover{ background: rgba(255,255,255,.06); }
-.gd-menuItem:focus-visible{
-  outline: 2px solid rgba(56,189,248,.22);
-  box-shadow: 0 0 0 6px rgba(56,189,248,.10);
-}
 .gd-menuSep{ height:1px; background: rgba(255,255,255,.10); margin: 6px 4px; }
 .gd-menuItem--danger{ color: rgba(254,202,202,.96); }
 .gd-menuItem--danger:hover{ background: rgba(248,113,113,.12); }
@@ -1639,7 +1760,6 @@ function StyleGameDetail() {
 }
 .gd-subTitle{ font-weight: 900; font-size: 13px; margin-bottom: 10px; color: rgba(255,255,255,.90); }
 
-/* ✅ Meta badges (ไม่ให้เหมือนปุ่ม) — ปรับให้เล็กลง/ไม่หนา/ไม่เด้ง */
 .gd-aboutMeta{
   display:flex;
   flex-wrap:wrap;
@@ -1648,30 +1768,18 @@ function StyleGameDetail() {
   margin-bottom: 10px;
 }
 .gd-metaTag{
+  border: 0 !important;
+  background: transparent !important;
+  padding: 4px 10px !important;
+  border-radius: 0 !important;
+  gap: 8px;
   display:inline-flex;
   align-items:center;
-  gap: 8px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.03);
-  font-weight: 600;          /* เดิม 900 */
-  font-size: 12px;           /* meta ควรเล็กกว่า body */
-  user-select:none;
-  cursor: default;
+  font-size: 12px;
+  font-weight: 600;
 }
-.gd-metaTag--soft{
-  background: rgba(255,255,255,.02);
-  border-color: rgba(255,255,255,.08);
-}
-.gd-metaKey{
-  color: rgba(255,255,255,.60);
-  font-weight: 600;          /* เดิม 900 */
-}
-.gd-metaVal{
-  color: rgba(255,255,255,.92);
-  font-weight: 700;
-}
+.gd-metaKey{ color: rgba(255,255,255,.60); font-weight: 600; }
+.gd-metaVal{ color: rgba(255,255,255,.92); font-weight: 700; }
 .gd-muted{ color: rgba(255,255,255,.70); font-size: 12px; }
 
 .gd-uploader{
@@ -1708,10 +1816,9 @@ function StyleGameDetail() {
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.04);
   color: rgba(255,255,255,.82);
-  font-weight: 700;          /* เดิม 800 (ลดนิด) */
+  font-weight: 700;
 }
 
-/* ✅ ข้อความอ่านยาว: 15-16px ใช้ได้ แต่ปรับ line-height + spacing ให้เนียน */
 .gd-tagline{ font-weight: 800; margin: 8px 0 10px; color: rgba(255,255,255,.90); }
 .gd-text{
   white-space: pre-wrap;
@@ -1723,7 +1830,6 @@ function StyleGameDetail() {
 @media (max-width: 520px){
   .gd-text{ font-size: 15px; line-height: 1.8; }
 }
-
 .gd-slimBlock{ margin-top: 12px; }
 
 /* Details */
@@ -1738,13 +1844,8 @@ function StyleGameDetail() {
   outline: 2px solid rgba(56,189,248,.20);
   box-shadow: 0 0 0 6px rgba(56,189,248,.10);
 }
-.gd-detailsSum{
-  cursor:pointer;
-  font-weight: 900;
-  color: rgba(255,255,255,.90);
-}
+.gd-detailsSum{ cursor:pointer; font-weight: 900; color: rgba(255,255,255,.90); }
 
-/* ✅ Rate row inside breakdown */
 .gd-rateRow{
   margin-top: 10px;
   margin-bottom: 12px;
@@ -1760,18 +1861,9 @@ function StyleGameDetail() {
 @media (max-width: 520px){
   .gd-rateRow{ flex-direction:column; align-items:flex-start; }
 }
-.gd-rateRow__title{
-  font-weight: 900;
-  color: rgba(255,255,255,.92);
-  font-size: 13px;
-}
-.gd-rateRow__sub{
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(255,255,255,.65);
-}
+.gd-rateRow__title{ font-weight: 900; color: rgba(255,255,255,.92); font-size: 13px; }
+.gd-rateRow__sub{ margin-top: 2px; font-size: 12px; color: rgba(255,255,255,.65); }
 
-/* Rating bars */
 .gd-rbars{ display:flex; flex-direction:column; gap: 8px; margin-top: 10px; }
 .gd-rrow{ display:grid; grid-template-columns: 34px 1fr 40px; gap: 10px; align-items:center; }
 .gd-rrow__left{ font-size: 12px; color: rgba(255,255,255,.72); font-weight: 900; }
@@ -1782,11 +1874,7 @@ function StyleGameDetail() {
   background: rgba(0,0,0,.18);
   overflow:hidden;
 }
-.gd-rrow__fill{
-  height: 100%;
-  background: rgba(56,189,248,.85);
-  border-radius: 999px;
-}
+.gd-rrow__fill{ height: 100%; background: rgba(56,189,248,.85); border-radius: 999px; }
 .gd-rrow__right{ font-size: 12px; color: rgba(255,255,255,.70); text-align:right; font-weight: 900; }
 
 /* Video */
@@ -1829,9 +1917,20 @@ function StyleGameDetail() {
   color: rgba(255,255,255,.78);
 }
 
-/* Compose + comments */
-.gd-compose{ margin-top: 10px; display:flex; flex-direction:column; gap:10px; }
+/* Compose + comments (Post button beside textarea) */
+.gd-compose{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "input post"
+    "hint  post";
+  gap: 10px;
+  align-items: start;
+}
+
 .gd-input{
+  grid-area: input;
   width:100%;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,.12);
@@ -1840,96 +1939,149 @@ function StyleGameDetail() {
   padding: 10px 12px;
   outline:none;
   resize: vertical;
+  min-height: 52px;
+  height: 44px;
 }
+
 .gd-input:focus{
   border-color: rgba(56,189,248,.55);
   box-shadow: 0 0 0 4px rgba(56,189,248,.10);
 }
-.gd-composeBar{
-  display:flex;
-  justify-content:space-between;
-  gap: 10px;
-  align-items:center;
-}
-@media (max-width: 520px){
-  .gd-composeBar{ flex-direction:column; align-items:flex-start; }
-}
-.gd-composeHint{
-  font-size: 12px;
-  color: rgba(255,255,255,.55);
-}
-.gd-btnPrimary{
+.gd-composeBar{ display: contents; }
+.gd-composeBar .gd-btnPrimary{
+  grid-area: post;
+  align-self: start;
+  min-height: 50px;
+  padding: 0 18px;
+  white-space: nowrap;
   border: 0;
   border-radius: 12px;
   background: rgba(56,189,248,.92);
   color: rgba(0,0,0,.88);
   font-weight: 900;
-  padding: 9px 14px;
   cursor:pointer;
 }
-.gd-btnPrimary:hover{ filter: brightness(1.03); }
-.gd-btnPrimary:focus-visible{
-  outline: 2px solid rgba(56,189,248,.22);
-  box-shadow: 0 0 0 6px rgba(56,189,248,.10);
-}
-.gd-btnPrimary--ghost{
-  background: rgba(56,189,248,.18);
-  color: rgba(255,255,255,.92);
-  border: 1px solid rgba(56,189,248,.35);
-}
-.gd-btnPrimary--ghost:hover{
-  filter:none;
-  border-color: rgba(56,189,248,.55);
-  background: rgba(56,189,248,.22);
+.gd-composeBar .gd-btnPrimary:hover{ filter: brightness(1.03); }
+
+@media (max-width: 520px){
+  .gd-compose{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "input"
+      "hint"
+      "post";
+  }
+  .gd-composeBar .gd-btnPrimary{
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+  }
 }
 
-.gd-commentList{ margin-top: 12px; display:flex; flex-direction:column; gap:10px; }
-.gd-crow{ --indent: 0; padding-left: calc(var(--indent) * 14px); }
-.gd-crow__card{
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.16);
-  border-radius: 16px;
-  padding: 12px;
-  display:flex;
-  gap: 10px;
+/* ✅ Best comment list */
+.gd-commentList{ margin-top: 12px; display:flex; flex-direction:column; gap: 14px; }
+.gd-commentList--best{ gap: 16px; }
+
+/* indentation */
+.gd-crow{
+  --indent: 0;
+  position: relative;
+  padding-left: calc(var(--indent) * var(--best-step));
 }
-.gd-crow__av{
+.gd-crow.is-reply .gd-thread__main{
+  border-left: 2px solid var(--best-bar);
+  padding-left: 12px;
+}
+
+/* row layout */
+.gd-thread{ display:flex; gap: 10px; align-items:flex-start; }
+
+/* avatar */
+.gd-thread__avWrap{ width: 34px; flex-shrink:0; }
+.gd-thread__av{
   width: 34px; height: 34px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,.14);
   object-fit: cover;
   background: rgba(255,255,255,.06);
-  flex-shrink:0;
+  display:block;
 }
-.gd-crow__body{ flex:1; min-width:0; }
-.gd-crow__head{ display:flex; gap:10px; align-items:center; }
-.gd-crow__name{ font-weight: 900; color: rgba(255,255,255,.92); }
-.gd-crow__time{ margin-left:auto; font-size: 12px; color: rgba(255,255,255,.60); }
-.gd-crow__text{ margin-top: 8px; white-space: pre-wrap; line-height: 1.75; color: rgba(255,255,255,.86); }
-.gd-crow__actions{ margin-top: 10px; display:flex; gap: 12px; flex-wrap:wrap; }
+.gd-thread__main{ flex:1; min-width:0; }
 
-.gd-linkBtn{
-  border:0; background:none;
+/* bubble */
+.gd-bubble{
+  display:inline-block;
+  max-width: 100%;
+  border-radius: 18px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+}
+.gd-bubble__top{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+.gd-bubble__name{
+  font-weight: 900;
+  color: rgba(255,255,255,.92);
+  font-size: 13px;
+}
+.gd-bubble__text{
+  margin-top: 6px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: rgba(255,255,255,.88);
+  font-size: 14px;
+}
+
+/* ✅ replying label แบบ text ล้วน */
+.gd-replyInline{
+  display:inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  color: rgba(255,255,255,.62);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* actions row */
+.gd-metaRow{
+  margin-top: 6px;
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap:wrap;
+  padding-left: 6px;
+  color: rgba(255,255,255,.70);
+}
+.gd-miniAction{
+  border:0;
+  background:none;
   color: rgba(147,197,253,.95);
   font-weight: 900;
   cursor:pointer;
   padding: 0;
+  font-size: 13px;
 }
-.gd-linkBtn:hover{ text-decoration: underline; }
-.gd-linkBtn:focus-visible{
-  outline: 2px solid rgba(56,189,248,.22);
-  box-shadow: 0 0 0 6px rgba(56,189,248,.10);
-}
-.gd-linkBtn--danger{ color: rgba(251,113,133,.95); }
-.gd-linkBtn--warn{ color: rgba(245,158,11,.95); }
+.gd-miniAction:hover{ text-decoration: underline; }
+.gd-miniAction--danger{ color: rgba(251,113,133,.95); }
+.gd-miniAction--warn{ color: rgba(245,158,11,.95); }
+.gd-metaRow__dot{ color: rgba(255,255,255,.40); }
+.gd-metaRow__time{ font-size: 12px; color: rgba(255,255,255,.60); }
 
+/* reply box */
 .gd-replyBox{
-  margin-top: 12px;
+  margin-top: 10px;
   padding: 10px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.04);
+  background: rgba(0,0,0,.12);
 }
+.gd-replyBox--best{ margin-left: 6px; }
 .gd-replyMeta{
   font-size: 12px;
   color: rgba(255,255,255,.72);
@@ -1941,7 +2093,7 @@ function StyleGameDetail() {
 .gd-replyPreview{ color: rgba(255,255,255,.60); font-style: italic; }
 .gd-replyBar{ display:flex; justify-content:flex-end; gap: 10px; margin-top: 10px; }
 
-/* ✅ Toast */
+/* Toast */
 .gd-toast{
   position: fixed;
   left: 50%;
@@ -1957,6 +2109,152 @@ function StyleGameDetail() {
   font-weight: 900;
   font-size: 13px;
 }
+
+/* ✅ Force Reply button to match Post button */
+.gd-replyBox .gd-btnPrimary{
+  background: rgba(56,189,248,.92) !important;
+  color: rgba(0,0,0,.88) !important;
+  border: 0 !important;
+}
+.gd-replyBox .gd-btnPrimary:hover{ filter: brightness(1.03); }
+.gd-replyBox .gd-btn{
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.92);
+}
+
+/* ✅ Rate this game (ghost) ให้เหมือนปุ่ม Post/Reply */
+.gd-btnPrimary--ghost{
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: rgba(56,189,248,.92) !important;
+  color: rgba(0,0,0,.88) !important;
+  font-weight: 900 !important;
+  padding: 9px 14px !important;
+  cursor: pointer;
+}
+.gd-btnPrimary--ghost:hover{ filter: brightness(1.03); }
+
+/* =========================
+   ✅ Report modal styles (NEW)
+========================= */
+.gd-modalBack{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 500;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 18px;
+}
+.gd-modalCard{
+  width: min(620px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--gd-stroke);
+  background: var(--gd-panel); 
+  box-shadow: 0 30px 90px rgba(0,0,0,.65);
+  overflow:hidden;
+}
+.gd-modalTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.gd-modalTitle{
+  font-weight: 900;
+  color: rgba(255,255,255,.95);
+}
+.gd-modalX{
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.92);
+  font-size: 18px;
+  cursor:pointer;
+}
+.gd-modalX:hover{ border-color: rgba(56,189,248,.40); }
+.gd-modalBody{ padding: 14px 16px 16px; }
+
+.gd-modalNote{
+  color: rgba(255,255,255,.72);
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.gd-field{ margin-top: 12px; }
+.gd-fieldLabel{
+  font-weight: 900;
+  color: rgba(255,255,255,.92);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.gd-fieldHint{ color: rgba(255,255,255,.55); font-weight: 700; }
+
+.gd-radioCol{ display:flex; flex-direction:column; gap: 8px; }
+.gd-radio{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  color: rgba(255,255,255,.84);
+  font-weight: 700;
+}
+.gd-radio input{ accent-color: rgba(56,189,248,.92); }
+
+.gd-modalTextarea{
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.16);
+  color: rgba(255,255,255,.92);
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+  min-height: 90px;
+}
+.gd-modalTextarea:focus{
+  border-color: rgba(56,189,248,.55);
+  box-shadow: 0 0 0 4px rgba(56,189,248,.10);
+}
+
+.gd-check{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  color: rgba(255,255,255,.84);
+  font-weight: 800;
+}
+.gd-check input{ accent-color: rgba(56,189,248,.92); }
+
+.gd-smallWarn{
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,.55);
+}
+
+.gd-modalActions{
+  margin-top: 16px;
+  display:flex;
+  justify-content:flex-end;
+  gap: 10px;
+}
+
+.gd-dangerBtn{
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor:pointer;
+  background: rgba(56,189,248,.92);
+  color: rgba(0,0,0,.88);
+}
+.gd-dangerBtn:hover{ filter: brightness(1.03); }
+.gd-dangerBtn:disabled{ opacity: .6; cursor:not-allowed; }
+
 `}</style>
   );
 }

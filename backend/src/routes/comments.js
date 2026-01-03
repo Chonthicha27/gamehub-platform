@@ -84,7 +84,7 @@ router.post("/games/:gameId/comments", authRequired, async (req, res) => {
 router.post("/comments/:id/report", authRequired, async (req, res) => {
   try {
     const commentId = req.params.id;
-    const { reason = "" } = req.body || {};
+    const { reason = "", description = "" } = req.body || {};
     const userId = req.user._id;
 
     const comment = await Comment.findById(commentId).populate(
@@ -116,6 +116,7 @@ router.post("/comments/:id/report", authRequired, async (req, res) => {
     comment.reports.push({
       reporter: userId,
       reason: reason || "",
+      description: (description || "").trim(), // ✅ ADD
       createdAt: new Date(),
     });
     comment.reportsCount = (comment.reportsCount || 0) + 1;
