@@ -1083,7 +1083,8 @@ export default function GameDetail() {
             <div className="gd-aboutMeta" aria-label="Game meta">
               <span className="gd-metaTag" title="Category">
                 <span className="gd-metaKey">Category</span>
-                <span className="gd-metaVal">{metaCategory}</span>
+                <span className="gd-metaVal gd-metaVal--cap">{metaCategory}</span>
+
               </span>
 
               <span className="gd-metaTag gd-metaTag--soft" title="Type">
@@ -1150,17 +1151,19 @@ export default function GameDetail() {
 
                 <div className="gd-rbars">
                   {[5, 4, 3, 2, 1].map((star) => {
-                    const row = ratingBars[5 - star] || { v: 0, pct: 0 };
-                    return (
-                      <div key={star} className="gd-rrow">
-                        <div className="gd-rrow__left">{star}★</div>
-                        <div className="gd-rrow__bar">
-                          <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
-                        </div>
-                        <div className="gd-rrow__right">{row.v}</div>
-                      </div>
-                    );
-                  })}
+  // dist = [1★,2★,3★,4★,5★] => index = star-1
+  const row = ratingBars[star - 1] || { v: 0, pct: 0 };
+  return (
+    <div key={star} className="gd-rrow">
+      <div className="gd-rrow__left">{star}★</div>
+      <div className="gd-rrow__bar">
+        <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
+      </div>
+      <div className="gd-rrow__right">{row.v}</div>
+    </div>
+  );
+})}
+
                 </div>
               </details>
             ) : null}
@@ -1173,7 +1176,7 @@ export default function GameDetail() {
 
             {videoEmbedUrl ? (
               <div className="gd-slimBlock">
-                <div className="gd-subTitle">Trailer</div>
+                
                 <div className="gd-video">
                   <iframe
                     src={videoEmbedUrl}
@@ -1517,6 +1520,7 @@ function StyleGameDetail() {
   --best-step: 26px;
   --best-bar: rgba(255,255,255,.14);
 }
+.gd-metaVal--cap { text-transform: capitalize; }
 
 .gd-wrap{ max-width: 980px; margin: 0 auto; padding: 0 12px; color: var(--gd-text); }
 
