@@ -438,7 +438,7 @@ export default function EditGame() {
               <div className="field">
                 <label className="label">Project URL</label>
                 <div className="url-row">
-                  <span className="url-prefix muted">https://gpx.gg/</span>
+                  <span className="url-prefix muted">https://bughub.gg/</span>
                   <input
                     className="input input-clean"
                     placeholder="your-awesome-game"

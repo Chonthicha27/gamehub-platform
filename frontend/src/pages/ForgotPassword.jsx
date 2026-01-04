@@ -32,13 +32,13 @@ export default function ForgotPassword() {
       <style>{CSS_FORGOT}</style>
 
       <main className="fp2-max">
-        {/* glow ด้านหลังการ์ด */}
+        {/* glow ด้านหลังการ์ด (ตอนนี้เป็นโทนเทา ไม่อมฟ้า) */}
         <div className="fp2-glow" />
 
         <section className="fp2-card">
           {/* header / brand */}
           <header className="fp2-header">
-            <div className="fp2-logoCircle">GPX</div>
+            <div className="fp2-logoCircle">BU</div>
             <div className="fp2-headerText">
               <p className="fp2-eyebrow">ACCOUNT SECURITY</p>
               <p className="fp2-subtitle">
@@ -51,7 +51,7 @@ export default function ForgotPassword() {
 
           <h1 className="fp2-title">Forgot your password?</h1>
           <p className="fp2-desc">
-            ใส่อีเมลที่ใช้สมัคร GPX แล้วเราจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ให้คุณ
+            ใส่อีเมลที่ใช้สมัคร BU GHub แล้วเราจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ให้คุณ
             เพื่อให้บัญชีของคุณปลอดภัยอยู่เสมอ
           </p>
 
@@ -70,28 +70,16 @@ export default function ForgotPassword() {
 
             {message && <div className="fp2-message">{message}</div>}
 
-            <button
-              className="fp2-btnPrimary"
-              type="submit"
-              disabled={loading}
-            >
+            <button className="fp2-btnPrimary" type="submit" disabled={loading}>
               {loading ? "SENDING..." : "SEND RESET LINK"}
             </button>
           </form>
 
           <footer className="fp2-footerRow">
-            <button
-              type="button"
-              className="fp2-link"
-              onClick={() => navigate(-1)}
-            >
+            <button type="button" className="fp2-link" onClick={() => navigate(-1)}>
               ← Back
             </button>
-            <button
-              type="button"
-              className="fp2-link"
-              onClick={() => navigate("/")}
-            >
+            <button type="button" className="fp2-link" onClick={() => navigate("/")}>
               Return to home
             </button>
           </footer>
@@ -102,13 +90,18 @@ export default function ForgotPassword() {
 }
 
 const CSS_FORGOT = `
-.fp2-root {
-  min-height: 100vh;
-  background: radial-gradient(circle at top, #020617 0, #020617 55%);
+/* ===== Background (neutral gray, no blue tone) ===== */
+.fp2-root{
+  min-height:100vh;
+  /* เทาเข้มแบบ neutral (ไม่อมฟ้า) */
+  background:
+    radial-gradient(circle at 25% 15%, #1a1c21 0%, transparent 55%),
+    radial-gradient(circle at 80% 85%, #16181d 0%, transparent 60%),
+    linear-gradient(180deg, #0f1013 0%, #0b0c0f 100%);
   display:flex;
   justify-content:center;
   align-items:center;
-  padding:40px 16px;
+  padding:44px 16px;
 }
 
 .fp2-max{
@@ -119,176 +112,193 @@ const CSS_FORGOT = `
   position:relative;
 }
 
+/* glow โทนเทา (ถ้าไม่อยากได้เลย -> ใส่ display:none;) */
 .fp2-glow{
   position:absolute;
   inset:0;
   margin:auto;
-  width:520px;
-  height:340px;
+  width:560px;
+  height:360px;
   background:
-    radial-gradient(circle at top, rgba(148, 163, 255, 0.35), transparent 65%),
-    radial-gradient(circle at bottom, rgba(56, 189, 248, 0.35), transparent 65%);
-  filter: blur(38px);
-  opacity: .95;
+    radial-gradient(circle at 30% 35%, rgba(255,255,255,.14), transparent 60%),
+    radial-gradient(circle at 70% 75%, rgba(255,255,255,.09), transparent 62%);
+  filter: blur(42px);
+  opacity:.85;
   pointer-events:none;
 }
 
-/* card */
+/* ===== Card ===== */
 .fp2-card{
   width:min(560px, 100%);
   position:relative;
-  background:linear-gradient(180deg,#fdfefe,#f5f6fb);
-  border-radius:20px;                 /* ขอบไม่มนมาก */
-  padding:26px 30px 22px;
-  border:1px solid rgba(209,213,219,0.9);
-  box-shadow:none;                    /* ไม่มีเงาการ์ด */
+  background:linear-gradient(180deg,#ffffff,#f6f7fb);
+  border-radius:22px;
+  padding:28px 32px 22px;
+  border:1px solid rgba(209,213,219,.95);
+  /* เพิ่มเงาเบาๆ ให้แยกจากพื้นหลังเทา */
+  box-shadow:0 18px 50px rgba(0,0,0,.25);
 }
 
-/* header */
+/* ===== Header ===== */
 .fp2-header{
   display:flex;
   align-items:center;
   gap:14px;
   margin-bottom:10px;
 }
+
 .fp2-logoCircle{
   width:44px;
   height:44px;
-  border-radius:18px;
-  background:#020617;
+  border-radius:14px;
+  background:#0b0c0f;
   display:flex;
   align-items:center;
   justify-content:center;
   color:#f9fafb;
-  font-weight:900;
-  font-size:18px;
-  letter-spacing:.04em;
-  box-shadow:none;                    /* ไม่มีเงาโลโก้ */
+  font-weight:800;
+  font-size:16px;
+  letter-spacing:.06em;
 }
+
 .fp2-headerText{
   display:flex;
   flex-direction:column;
   gap:2px;
 }
+
 .fp2-eyebrow{
   font-size:11px;
-  letter-spacing:.20em;
+  letter-spacing:.18em;
   text-transform:uppercase;
-  color:#9ca3af;
+  color:#9aa1ab;
+  margin:0;
 }
+
 .fp2-subtitle{
   font-size:13px;
   color:#6b7280;
+  margin:0;
 }
 
 .fp2-divider{
   height:1px;
-  margin:10px 0 14px;
-  background:linear-gradient(90deg,transparent,#d4d7e4,transparent);
+  margin:12px 0 16px;
+  background:linear-gradient(90deg, transparent, #d6d9e6, transparent);
 }
 
-/* title / desc */
+/* ===== Title / Desc ===== */
 .fp2-title{
   font-size:26px;
   font-weight:800;
   letter-spacing:-0.03em;
-  color:#020617;
-  margin:0 0 6px;
+  color:#0b0c0f;
+  margin:0 0 8px;
 }
+
 .fp2-desc{
   font-size:13.5px;
   color:#4b5563;
-  line-height:1.6;
-  margin-bottom:18px;
+  line-height:1.65;
+  margin:0 0 18px;
 }
 
-/* form */
+/* ===== Form ===== */
 .fp2-form{
   display:flex;
   flex-direction:column;
   gap:12px;
 }
+
 .fp2-label{
   display:flex;
   flex-direction:column;
-  gap:6px;
+  gap:7px;
 }
+
 .fp2-labelText{
   font-size:11px;
   letter-spacing:.16em;
   text-transform:uppercase;
-  color:#9ca3af;
+  color:#9aa1ab;
 }
+
 .fp2-input{
-  border-radius:16px;
-  border:1px solid #d7e1f1;
-  background:#eef4ff;
+  border-radius:14px;
+  border:1px solid #d7dbe6;
+  background:#f1f3f7; /* เปลี่ยนจากฟ้าเป็นเทาอ่อน */
   padding:12px 14px;
   font-size:14px;
-  color:#020617;
+  color:#0b0c0f;
   outline:none;
 }
-.fp2-input::placeholder{
-  color:#9ca3af;
-}
+
+.fp2-input::placeholder{ color:#9aa1ab; }
+
 .fp2-input:focus{
-  border-color:#6aa8ff;
-  box-shadow:0 0 0 1px rgba(106,168,255,0.9),0 0 0 6px rgba(106,168,255,0.20);
+  border-color:#111318;
+  box-shadow:0 0 0 1px rgba(17,19,24,.55), 0 0 0 6px rgba(17,19,24,.12);
 }
 
 /* message */
 .fp2-message{
   margin-top:2px;
-  border-radius:16px;
+  border-radius:14px;
   padding:10px 12px;
-  border:1px solid #dbeafe;
-  background:#e0f2fe;
+  border:1px solid #e5e7eb;
+  background:#f3f4f6;  /* เทาอ่อน (ไม่อมฟ้า) */
   font-size:12px;
-  color:#1e293b;
+  color:#111827;
 }
 
-/* primary button */
+/* ===== Primary Button ===== */
 .fp2-btnPrimary{
-  margin-top:8px;
+  margin-top:10px;
   width:100%;
   border:none;
   border-radius:999px;
   padding:13px 16px;
   font-size:13px;
-  font-weight:700;
+  font-weight:750;
   letter-spacing:.12em;
   text-transform:uppercase;
-  background:#0c1116;
+  background:#0b0c0f;
   color:#f9fafb;
   cursor:pointer;
-  box-shadow:none;                    /* ไม่มีเงาปุ่ม */
-  transition:transform .12s ease, filter .12s ease;
+  transition:transform .12s ease, filter .12s ease, opacity .12s ease;
 }
+
 .fp2-btnPrimary:hover:not(:disabled){
-  filter:brightness(1.03);
+  filter:brightness(1.05);
   transform:translateY(-1px);
 }
+
 .fp2-btnPrimary:disabled{
   opacity:.65;
   cursor:default;
 }
 
-/* footer */
+/* ===== Footer ===== */
 .fp2-footerRow{
   display:flex;
   justify-content:space-between;
+  align-items:center;
   margin-top:16px;
+  padding-top:10px;
+  border-top:1px solid rgba(209,213,219,.6);
 }
+
 .fp2-link{
   border:none;
   background:none;
-  padding:0;
+  padding:6px 0;
   font-size:12px;
-  color:#9ca3af;
+  color:#8b93a0;
   cursor:pointer;
 }
+
 .fp2-link:hover{
-  color:#020617;
+  color:#0b0c0f;
   text-decoration:underline;
 }
 
@@ -299,5 +309,11 @@ const CSS_FORGOT = `
     border-radius:18px;
   }
   .fp2-title{ font-size:22px; }
+  .fp2-glow{
+    width:480px;
+    height:320px;
+    filter:blur(40px);
+    opacity:.75;
+  }
 }
 `;

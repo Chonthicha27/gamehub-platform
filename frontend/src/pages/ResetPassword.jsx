@@ -61,7 +61,7 @@ export default function ResetPassword() {
 
         <section className="rp2-card">
           <header className="rp2-header">
-            <div className="rp2-logoCircle">GPX</div>
+            <div className="rp2-logoCircle">BU GHub</div>
             <div className="rp2-headerText">
               <p className="rp2-eyebrow">SECURITY UPDATE</p>
               <p className="rp2-subtitle">
@@ -74,7 +74,7 @@ export default function ResetPassword() {
 
           <h1 className="rp2-title">Set a new password</h1>
           <p className="rp2-desc">
-            ตั้งรหัสผ่านใหม่สำหรับบัญชี GPX ของคุณ
+            ตั้งรหัสผ่านใหม่สำหรับบัญชี BU GHub ของคุณ
             แนะนำให้ใช้รหัสผ่านที่ไม่ซ้ำกับที่อื่นเพื่อความปลอดภัย
           </p>
 

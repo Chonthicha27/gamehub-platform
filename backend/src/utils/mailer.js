@@ -17,7 +17,7 @@ const nodeEnv = process.env.NODE_ENV || "development";
 const isProd = nodeEnv === "production" || isRender;
 
 const FROM_EMAIL =
-  (MAIL_FROM || SMTP_USER || "").trim() || '"GPX" <no-reply@example.com>';
+  (MAIL_FROM || SMTP_USER || "").trim() || '"BU Ghub" <no-reply@example.com>';
 
 // ======================
 // 1) ส่งผ่าน Brevo HTTP API (ใช้บน Render / prod)
@@ -34,7 +34,7 @@ async function sendViaBrevoApi({ to, subject, html, text }) {
 
   const senderEmail = FROM_EMAIL.match(/<(.*)>/)?.[1] || FROM_EMAIL;
   const senderName =
-    FROM_EMAIL.match(/^(.*)</)?.[1]?.trim() || "GPX";
+    FROM_EMAIL.match(/^(.*)</)?.[1]?.trim() || "BU Ghub";
 
   const body = {
     sender: {

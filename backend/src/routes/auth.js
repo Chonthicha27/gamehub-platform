@@ -39,7 +39,7 @@ async function sendVerifyEmail(user) {
     const link = `${SERVER_URL}/api/auth/verify-email?uid=${user._id}&token=${token}`;
     const html = `
       <div style="font-family:system-ui,Segoe UI,Roboto,Arial">
-        <h2>ยืนยันอีเมลสำหรับ GPX</h2>
+        <h2>ยืนยันอีเมลสำหรับ BU Ghub</h2>
         <p>สวัสดี ${user.username}, กรุณาคลิกปุ่มด้านล่างเพื่อยืนยันอีเมลของคุณ</p>
         <p><a href="${link}" style="background:#111;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">ยืนยันอีเมล</a></p>
         <p>หรือเปิดลิงก์นี้: <a href="${link}">${link}</a></p>
@@ -49,7 +49,7 @@ async function sendVerifyEmail(user) {
 
     await sendMail({
       to: user.email,
-      subject: "GPX - ยืนยันอีเมลของคุณ",
+      subject: "BU Ghub - ยืนยันอีเมลของคุณ",
       html,
       text: `Verify: ${link}`,
     });
@@ -157,8 +157,8 @@ router.post("/forgot-password", async (req, res, next) => {
 
     const html = `
       <div style="font-family:system-ui,Segoe UI,Roboto,Arial">
-        <h2>รีเซ็ตรหัสผ่าน GPX</h2>
-        <p>คุณได้รับอีเมลนี้เพราะมีการขอรีเซ็ตรหัสผ่านสำหรับบัญชี GPX ของคุณ</p>
+        <h2>รีเซ็ตรหัสผ่าน BU Ghub</h2>
+        <p>คุณได้รับอีเมลนี้เพราะมีการขอรีเซ็ตรหัสผ่านสำหรับบัญชี BU Ghub ของคุณ</p>
         <p><a href="${link}" style="background:#111;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">ตั้งรหัสผ่านใหม่</a></p>
         <p>หรือเปิดลิงก์นี้: <a href="${link}">${link}</a></p>
         <p style="color:#666;font-size:12px">ลิงก์จะหมดอายุใน 1 ชั่วโมง หากคุณไม่ได้เป็นคนขอ สามารถเพิกเฉยอีเมลนี้ได้</p>
@@ -168,7 +168,7 @@ router.post("/forgot-password", async (req, res, next) => {
     // พยายามส่งเมล แต่ไม่ให้ระบบพังถ้าส่งไม่ได้
     await sendMail({
       to: user.email,
-      subject: "GPX - รีเซ็ตรหัสผ่านของคุณ",
+      subject: "BU Ghub - รีเซ็ตรหัสผ่านของคุณ",
       html,
       text: `Reset password: ${link}`,
     });
