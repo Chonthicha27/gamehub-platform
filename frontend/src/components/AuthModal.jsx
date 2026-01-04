@@ -89,8 +89,8 @@ export default function AuthModal({ open, defaultTab = "login", onClose, onAuthe
         <section className="am2-left">
           <div className="am2-left__bg" style={{ backgroundImage: `url(${BG_URL})` }} />
           <div className="am2-brand">
-            <div className="am2-logo">GPX</div>
-            <div className="am2-slogan">Discover, Play & Share</div>
+            <div className="am2-logo">BU GHub</div>
+           
           </div>
         </section>
 

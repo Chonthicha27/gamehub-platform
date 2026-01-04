@@ -433,10 +433,9 @@ export default function Home({ onLoginClick, onRegisterClick }) {
 
       <footer className="footer-neo">
         <div className="container footer-neo__inner">
-          <div className="brandmark">GPX</div>
-          <div className="muted">© {new Date().getFullYear()} Game Platform X</div>
+          <div className="brandmark">BU GHub</div>
+          <div className="muted">© {new Date().getFullYear()} BU Game Hub</div>
           <div className="links">
-            <a href="#">Privacy</a>
             <a href="#">Terms</a>
             <a href="#">Contact</a>
           </div>
