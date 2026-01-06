@@ -32,7 +32,7 @@ const HOME_STATS_CSS = `
   gap:6px;
   padding:3px 8px;
   border-radius:999px;
-  border:1px solid rgba(255,255,考,.14);
+  border:1px solid rgba(255,255,255,.14); /* ✅ FIX */
   background:rgba(2,6,23,.65);
   line-height:1;
 }
@@ -79,6 +79,44 @@ const renderTagline = (g) =>
   g?.tagline && String(g.tagline).trim().length > 0
     ? g.tagline
     : "No short description yet.";
+
+/* =========================
+   Link Normalizers (รองรับ username / @username / url เต็ม)
+========================= */
+const trim = (v) => String(v || "").trim();
+
+const ensureHttp = (v) => {
+  const s = trim(v);
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+};
+
+const normalizeGithub = (v) => {
+  const s = trim(v);
+  if (!s) return "";
+  const noAt = s.replace(/^@/, "");
+  const m = noAt.match(/github\.com\/([^/?#]+)/i);
+  const user = m ? m[1] : noAt;
+  return user ? `https://github.com/${user}` : "";
+};
+
+const normalizeX = (v) => {
+  const s = trim(v);
+  if (!s) return "";
+  const noAt = s.replace(/^@/, "");
+  const m = noAt.match(/(?:x\.com|twitter\.com)\/([^/?#]+)/i);
+  const user = m ? m[1] : noAt;
+  return user ? `https://x.com/${user}` : "";
+};
+
+const normalizeYoutube = (v) => {
+  const s = trim(v);
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  const path = s.replace(/^\//, "");
+  return `https://youtube.com/${path}`;
+};
 
 /* =========================
    UI
@@ -263,7 +301,9 @@ export default function Profile() {
       <div className="home-page">
         <style>{CSS + HOME_STATS_CSS}</style>
         <div className="container" style={{ padding: 24 }}>
-          <h2 style={{ margin: 0, fontWeight: 900, color: "var(--text)" }}>ไม่พบผู้ใช้นี้</h2>
+          <h2 style={{ margin: 0, fontWeight: 900, color: "var(--text)" }}>
+            ไม่พบผู้ใช้นี้
+          </h2>
           <p className="muted">ลิงก์อาจผิด หรือผู้ใช้อาจถูกลบ/ปิดการใช้งาน</p>
           <button className="btn btn--primary" onClick={() => nav("/")}>
             กลับหน้าแรก
@@ -274,14 +314,20 @@ export default function Profile() {
   }
 
   const display = me?.username || me?.displayName || "—";
-  const githubUser = me?.links?.github ? String(me.links.github).trim() : "";
-  const youtubeUrl = me?.links?.youtube ? String(me.links.youtube).trim() : "";
 
-  // ✅ กันกรณี user ใส่ youtube ไม่เป็น url (เช่น @xxx หรือ channel id)
-  const safeYoutube =
-    youtubeUrl && !/^https?:\/\//i.test(youtubeUrl)
-      ? `https://youtube.com/${youtubeUrl.replace(/^@/, "@")}`
-      : youtubeUrl;
+  // ✅ รองรับหลายชื่อ field เผื่อ backend ไม่ตรง
+  const websiteRaw = me?.links?.website ?? me?.links?.site ?? me?.website ?? "";
+  const xRaw = me?.links?.twitter ?? me?.links?.x ?? me?.links?.twitterX ?? "";
+  const youtubeRaw = me?.links?.youtube ?? me?.youtube ?? "";
+  const githubRaw = me?.links?.github ?? me?.github ?? "";
+
+  // ✅ normalize ให้เป็นลิงก์ที่กดได้เสมอ
+  const websiteUrl = ensureHttp(websiteRaw);
+  const xUrl = normalizeX(xRaw);
+  const youtubeUrl = normalizeYoutube(youtubeRaw);
+  const githubUrl = normalizeGithub(githubRaw);
+
+  const hasAnyLinks = !!(websiteUrl || xUrl || youtubeUrl || githubUrl);
 
   return (
     <div className="home-page">
@@ -290,7 +336,9 @@ export default function Profile() {
       <section
         className="pfx-banner"
         style={{
-          backgroundImage: `url(${cdn(me?.bannerUrl || "/profile-banner-fallback.jpg")})`,
+          backgroundImage: `url(${cdn(
+            me?.bannerUrl || "/profile-banner-fallback.jpg"
+          )})`,
         }}
       >
         <div className="pfx-banner__overlay" />
@@ -311,17 +359,27 @@ export default function Profile() {
                 <h1 className="pfx-name">{display}</h1>
                 <div className="pfx-handle">@{me?.username || "unknown"}</div>
 
-                {/* ✅ Website ออก + YouTube กลับมา */}
-                {!!me?.links && (
+                {/* ✅ Links & socials */}
+                {hasAnyLinks && (
                   <div className="pfx-links">
-                    {githubUser && (
-                      <a href={`https://github.com/${githubUser}`} target="_blank" rel="noreferrer">
-                        GitHub
+                    {websiteUrl && (
+                      <a href={websiteUrl} target="_blank" rel="noreferrer">
+                        Website
                       </a>
                     )}
-                    {safeYoutube && (
-                      <a href={safeYoutube} target="_blank" rel="noreferrer">
+                    {xUrl && (
+                      <a href={xUrl} target="_blank" rel="noreferrer">
+                        X
+                      </a>
+                    )}
+                    {youtubeUrl && (
+                      <a href={youtubeUrl} target="_blank" rel="noreferrer">
                         YouTube
+                      </a>
+                    )}
+                    {githubUrl && (
+                      <a href={githubUrl} target="_blank" rel="noreferrer">
+                        GitHub
                       </a>
                     )}
                   </div>
@@ -351,7 +409,9 @@ export default function Profile() {
       <section className="section container">
         <div className="section__head">
           <h2 className="section__title">Games</h2>
-          <span className="muted">{stats.games > 0 ? `${stats.games} games` : "ยังไม่มีเกม"}</span>
+          <span className="muted">
+            {stats.games > 0 ? `${stats.games} games` : "ยังไม่มีเกม"}
+          </span>
         </div>
 
         {loading ? (
