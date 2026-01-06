@@ -1054,34 +1054,35 @@ export default function GameDetail() {
 
 
 
-                    {(me && (String(me._id) === String(game?.uploader?._id || game?.uploader) || me?.role === "admin")) && !isPreview ? (
-                      <>
-                        <div className="gd-menuSep" />
-                        <button
-                          className="gd-menuItem"
-                          onClick={() => {
-                            setMoreOpen(false);
-                            nav(`/games/${game._id}/edit`);
-                          }}
-                          type="button"
-                          role="menuitem"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="gd-menuItem gd-menuItem--danger"
-                          onClick={() => {
-                            setMoreOpen(false);
-                            onDelete();
-                          }}
-                          disabled={busy}
-                          type="button"
-                          role="menuitem"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    ) : null}
+{(me && (String(me._id) === String(game?.uploader?._id || game?.uploader))) && !isPreview ? (
+  <>
+    <div className="gd-menuSep" />
+    <button
+      className="gd-menuItem"
+      onClick={() => {
+        setMoreOpen(false);
+        nav(`/games/${game._id}/edit`);
+      }}
+      type="button"
+      role="menuitem"
+    >
+      Edit
+    </button>
+    <button
+      className="gd-menuItem gd-menuItem--danger"
+      onClick={() => {
+        setMoreOpen(false);
+        onDelete();
+      }}
+      disabled={busy}
+      type="button"
+      role="menuitem"
+    >
+      Delete
+    </button>
+  </>
+) : null}
+
                   </div>
                 ) : null}
               </div>
