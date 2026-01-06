@@ -924,18 +924,26 @@ export default function GameDetail() {
       <StyleGameDetail />
 
       <div className="gd-wrap">
-        {isPreview ? (
+       {isPreview ? (
   <div className="gd-topEditBar">
     <button
       className="gd-btn"
       type="button"
-      onClick={() => nav("/upload", { state: { draft } })}
-      title="Back to upload/edit form"
+      onClick={() => {
+        const backTo =
+          location?.state?.backTo ||
+          draft?.backTo ||
+          (draft?.fromEdit && draft?.gameId ? `/games/${draft.gameId}/edit` : "/upload");
+
+        nav(backTo, { state: { draft } });
+      }}
+      title="Back to edit form"
     >
       Back to edit
     </button>
   </div>
 ) : null}
+
 
         <section className="gd-frame">
           {playable && !downloadOnly && fileSrc && !isPreview ? (

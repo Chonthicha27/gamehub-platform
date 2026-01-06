@@ -31,6 +31,9 @@ const isHtmlFile = (u = "") => /\.html?(\?|$)/i.test(String(u || ""));
 const isZipFile = (u = "") => /\.zip(\?|$)/i.test(String(u || ""));
 const isRarFile = (u = "") => /\.rar(\?|$)/i.test(String(u || ""));
 
+// ✅ must match Preview page draft key
+const DRAFT_KEY = "gpx_upload_draft";
+
 /** Resize image with Canvas (keeps aspect ratio) */
 async function resizeImage(file, maxW = 1200, maxH = 675, mime = "image/jpeg", quality = 0.9) {
   const bitmap = await createImageBitmap(file);
@@ -84,9 +87,9 @@ export default function EditGame() {
 
   // kind (sent to backend)
   const [kind, setKind] = useState("html"); // 'html' | 'download'
-  const [kindOpen, setKindOpen] = useState(false); // ✅ make it same as UploadGame
+  const [kindOpen, setKindOpen] = useState(false);
 
-  // ✅ community UI state (but backend uses commentsEnabled)
+  // community UI state (backend uses commentsEnabled)
   const [communityMode, setCommunityMode] = useState("comments"); // off | comments
 
   // visibility (source of truth from backend)
@@ -108,9 +111,13 @@ export default function EditGame() {
   const [newCover, setNewCover] = useState(null);
   const [newScreens, setNewScreens] = useState([]);
 
-  // previews
+  // previews (blob)
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
+
+  // ✅ keep blob urls alive across navigation to /preview
+  const coverPreviewRef = useRef("");
+  const screenPreviewRefs = useRef([]);
 
   // ui
   const [busy, setBusy] = useState(false);
@@ -170,7 +177,7 @@ export default function EditGame() {
 
         setVideoUrl(g.videoUrl || "");
 
-        // ✅ FIX: ใช้ commentsEnabled จาก backend เป็นตัวจริง
+        // ✅ commentsEnabled from backend is truth
         const enabled = g.commentsEnabled !== false;
         setCommunityMode(enabled ? "comments" : "off");
       } catch (e) {
@@ -186,19 +193,58 @@ export default function EditGame() {
   }, [kind]);
 
   // ===== preview cover (new) =====
+  // ✅ DO NOT revoke on unmount (so /preview can use blob url)
   useEffect(() => {
-    if (!newCover) return setCoverPreview("");
+    if (!newCover) {
+      if (coverPreviewRef.current) {
+        try {
+          URL.revokeObjectURL(coverPreviewRef.current);
+        } catch {}
+        coverPreviewRef.current = "";
+      }
+      setCoverPreview("");
+      return;
+    }
+
+    if (coverPreviewRef.current) {
+      try {
+        URL.revokeObjectURL(coverPreviewRef.current);
+      } catch {}
+      coverPreviewRef.current = "";
+    }
+
     const url = URL.createObjectURL(newCover);
+    coverPreviewRef.current = url;
     setCoverPreview(url);
-    return () => URL.revokeObjectURL(url);
   }, [newCover]);
 
   // ===== preview screenshots (new) =====
+  // ✅ DO NOT revoke on unmount (so /preview can use blob url)
   useEffect(() => {
-    if (!newScreens.length) return setScreenPreviews([]);
+    if (!newScreens.length) {
+      if (screenPreviewRefs.current?.length) {
+        screenPreviewRefs.current.forEach((u) => {
+          try {
+            URL.revokeObjectURL(u);
+          } catch {}
+        });
+      }
+      screenPreviewRefs.current = [];
+      setScreenPreviews([]);
+      return;
+    }
+
+    if (screenPreviewRefs.current?.length) {
+      screenPreviewRefs.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+    }
+
     const urls = newScreens.map((f) => URL.createObjectURL(f));
+    screenPreviewRefs.current = urls;
     setScreenPreviews(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [newScreens]);
 
   const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
@@ -246,7 +292,78 @@ export default function EditGame() {
 
   const openViewPage = () => nav(`/games/${id}`);
 
+  // ✅ build draft compatible with /preview page
+  const buildDraft = () => {
+    const cover = newCover ? coverPreview : coverUrl ? cdn(coverUrl) : "";
+    const shots = newScreens.length
+      ? screenPreviews
+      : (Array.isArray(screens) ? screens : []).slice(0, 5).map((u) => cdn(u));
+
+    return {
+      // text fields
+      title: title.trim(),
+      slug: slug || "",
+      tagline: tagline || "",
+      description: description || "",
+
+      // meta
+      category,
+      kind,
+      tags,
+      visibility: visibilityChoice, // keep consistent with upload draft
+      communityMode,
+      videoUrl: String(videoUrl || "").trim(),
+
+      // media previews
+      coverPreview: cover || "",
+      screenPreviews: Array.isArray(shots) ? shots : [],
+
+      // optional info (harmless)
+      gameId: id,
+      gameFileName: newFile?.name || "",
+      fromEdit: true,
+    };
+  };
+
+  // ✅ Preview without saving
+const openPreview = () => {
+  const draft = buildDraft();
+  if (!draft.title) {
+    setMsg("Please enter a title before previewing.");
+    return;
+  }
+
+  const backTo = `/games/${id}/edit`;
+
+  // ✅ ใส่ backTo ลง draft ด้วย (กัน state หาย)
+  const nextDraft = { ...draft, backTo };
+
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(nextDraft));
+  } catch {}
+
+  // ✅ ส่ง backTo ไปด้วย
+  nav("/preview", { state: { draft: nextDraft, backTo } });
+};
+
+
   const resetUploads = () => {
+    // revoke old blobs explicitly
+    if (coverPreviewRef.current) {
+      try {
+        URL.revokeObjectURL(coverPreviewRef.current);
+      } catch {}
+      coverPreviewRef.current = "";
+    }
+    if (screenPreviewRefs.current?.length) {
+      screenPreviewRefs.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+    }
+    screenPreviewRefs.current = [];
+
     setNewFile(null);
     setNewCover(null);
     setNewScreens([]);
@@ -295,7 +412,7 @@ export default function EditGame() {
     return isHtmlFile(fileUrl) || isZipFile(fileUrl);
   }, [downloadOnly, kind, fileUrl]);
 
-  // ✅ label for kind dropdown (same as UploadGame)
+  // label for kind dropdown
   const kindLabel =
     kind === "html"
       ? "HTML — played in the browser (.html / .zip)"
@@ -330,10 +447,10 @@ export default function EditGame() {
       fd.append("category", category);
       fd.append("kind", kind);
 
-      // ✅ ส่ง visibility ที่ user เลือก
+      // send visibility that user chose
       fd.append("visibility", visibilityChoice);
 
-      // ✅ FIX: ส่ง commentsEnabled ให้ตรง backend
+      // commentsEnabled
       fd.append("commentsEnabled", communityMode === "comments" ? "true" : "false");
 
       // videoUrl
@@ -373,7 +490,7 @@ export default function EditGame() {
 
       setVideoUrl(g.videoUrl || videoUrl || "");
 
-      // ✅ sync community from backend
+      // sync community from backend
       const enabled = g.commentsEnabled !== false;
       setCommunityMode(enabled ? "comments" : "off");
 
@@ -412,6 +529,10 @@ export default function EditGame() {
           </div>
 
           <div className="itch-meta">
+            <button type="button" className="btn" onClick={openPreview} title="Preview changes without saving">
+              Preview
+            </button>
+
             <button type="button" className="btn btn-outline-on" onClick={openViewPage}>
               View page
             </button>
@@ -438,13 +559,8 @@ export default function EditGame() {
               <div className="field">
                 <label className="label">Project URL</label>
                 <div className="url-row">
-                  <span className="url-prefix muted">https://bughub.gg/</span>
-                  <input
-                    className="input input-clean"
-                    placeholder="your-awesome-game"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                  />
+                  <span className="url-prefix muted">https://bu.ghub.gg/</span>
+                  <input className="input input-clean" placeholder="your-awesome-game" value={slug} onChange={(e) => setSlug(e.target.value)} />
                 </div>
               </div>
 
@@ -462,7 +578,7 @@ export default function EditGame() {
                 <div className="field">
                   <label className="label">Kind of project</label>
 
-                  {/* ✅ Custom dropdown (same style as UploadGame) */}
+                  {/* Custom dropdown */}
                   <div className="kind-select">
                     <button
                       type="button"
@@ -688,7 +804,6 @@ export default function EditGame() {
               </div>
 
               <div className="radio-col">
-
                 <label className="radio">
                   <input type="radio" name="vis" checked={visChoice === "restricted"} onChange={() => setVisByChoice("restricted")} />
                   <span>Restricted — Only owners & authorized people can view the page</span>
@@ -710,6 +825,10 @@ export default function EditGame() {
             <div className="actions">
               <button type="button" className="btn" onClick={resetUploads} disabled={busy}>
                 Reset uploads
+              </button>
+
+              <button type="button" className="btn" onClick={openPreview} disabled={busy} title="Preview changes without saving">
+                Preview
               </button>
 
               <button type="button" className="btn btn-outline-on" onClick={openViewPage} disabled={busy}>
@@ -908,7 +1027,7 @@ function StyleLocal() {
 .link{ color:#7dd3fc; text-decoration:none; }
 .link:hover{ text-decoration:underline; }
 
-/* ✅ Kind of project (CUSTOM dropdown) = same as UploadGame + prevent (.rar) wrap */
+/* kind dropdown */
 .kind-select{ position:relative; }
 .kind-trigger{
   width:100%;
@@ -950,7 +1069,7 @@ function StyleLocal() {
   display:block;
   overflow:hidden;
   text-overflow:ellipsis;
-  white-space:nowrap;  /* ✅ stop .rar breaking line */
+  white-space:nowrap;
 }
 .kind-item:hover{ background: rgba(255,255,255,.06); }
 .kind-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }

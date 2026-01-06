@@ -59,9 +59,9 @@ api.interceptors.response.use(
       const reason = (data.reason || "").toString().trim();
       const untilTxt = formatUntil(data.suspendedUntil);
 
-      let msg = "บัญชีถูกระงับการใช้งาน";
-      if (reason) msg += `\nเหตุผล: ${reason}`;
-      if (untilTxt) msg += `\nถึง: ${untilTxt}`;
+      let msg = "Account Suspended";
+      if (reason) msg += `\nReason: ${reason}`;
+      if (untilTxt) msg += `\nUntil: ${untilTxt}`;
 
       // ล้าง token ฝั่ง client
       try {
