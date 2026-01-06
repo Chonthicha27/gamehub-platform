@@ -106,10 +106,6 @@ export default function UploadGame() {
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
 
-  // ✅ keep object URLs alive across route changes (don’t revoke on unmount)
-  const coverUrlRef = useRef("");
-  const screensUrlRef = useRef([]);
-
   // media (sent to backend)
   const [videoUrl, setVideoUrl] = useState("");
 
@@ -135,10 +131,23 @@ export default function UploadGame() {
     setSlug(toSafeSlug(title));
   }, [title, slugTouched]);
 
-  const currentCat = useMemo(
-    () => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0],
-    [category]
-  );
+  // preview cover (from coverFile)
+  useEffect(() => {
+    if (!coverFile) return;
+    const url = URL.createObjectURL(coverFile);
+    setCoverPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverFile]);
+
+  // preview screenshots (from screens)
+  useEffect(() => {
+    if (!screens.length) return;
+    const urls = screens.map((f) => URL.createObjectURL(f));
+    setScreenPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [screens]);
+
+  const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
 
   // tag helpers
   const addTag = () => {
@@ -243,21 +252,7 @@ export default function UploadGame() {
 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    title,
-    slug,
-    tagline,
-    description,
-    category,
-    kind,
-    tags,
-    visibility,
-    communityMode,
-    videoUrl,
-    coverPreview,
-    screenPreviews,
-    busy,
-  ]);
+  }, [title, slug, tagline, description, category, kind, tags, visibility, communityMode, videoUrl, coverPreview, screenPreviews, busy]);
 
   const openPreview = () => {
     const draft = buildDraft();
@@ -282,22 +277,6 @@ export default function UploadGame() {
 
   // reset
   const resetForm = () => {
-    // ✅ revoke previews (avoid memory leak)
-    if (coverUrlRef.current) {
-      try {
-        URL.revokeObjectURL(coverUrlRef.current);
-      } catch {}
-      coverUrlRef.current = "";
-    }
-    if (Array.isArray(screensUrlRef.current)) {
-      screensUrlRef.current.forEach((u) => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {}
-      });
-      screensUrlRef.current = [];
-    }
-
     setTitle("");
     setSlug("");
     setSlugTouched(false);
@@ -332,81 +311,27 @@ export default function UploadGame() {
     if (screensInputRef.current) screensInputRef.current.value = "";
   };
 
-  /** ✅ cover + resize before upload (KEEP preview alive across route changes) */
+  /** cover + resize before upload */
   const onCoverChange = async (e) => {
     const file = e.target.files?.[0];
-
-    if (!file) {
-      // revoke old
-      if (coverUrlRef.current) {
-        try {
-          URL.revokeObjectURL(coverUrlRef.current);
-        } catch {}
-      }
-      coverUrlRef.current = "";
-      setCoverFile(null);
-      setCoverPreview("");
-      return;
-    }
-
+    if (!file) return setCoverFile(null);
     try {
       const resized = await resizeImage(file, 1200, 675, "image/jpeg", 0.9);
       setCoverFile(resized);
-
-      // ✅ create preview url + revoke old
-      const nextUrl = URL.createObjectURL(resized);
-      if (coverUrlRef.current) {
-        try {
-          URL.revokeObjectURL(coverUrlRef.current);
-        } catch {}
-      }
-      coverUrlRef.current = nextUrl;
-      setCoverPreview(nextUrl);
     } catch (err) {
       console.error(err);
       setCoverFile(null);
-
-      if (coverUrlRef.current) {
-        try {
-          URL.revokeObjectURL(coverUrlRef.current);
-        } catch {}
-      }
-      coverUrlRef.current = "";
-      setCoverPreview("");
-
       setMsg("Cover image could not be processed. Please try another image.");
     }
   };
 
-  /** ✅ screenshots + resize before upload (KEEP preview alive across route changes) */
+  /** screenshots + resize before upload */
   const onScreensChange = async (e) => {
     const files = Array.from(e.target.files || []).slice(0, 5);
-
-    // revoke old previews
-    if (Array.isArray(screensUrlRef.current)) {
-      screensUrlRef.current.forEach((u) => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {}
-      });
-    }
-    screensUrlRef.current = [];
-    setScreenPreviews([]);
-
-    if (files.length === 0) {
-      setScreens([]);
-      return;
-    }
-
     const resized = [];
     try {
       for (const f of files) resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
       setScreens(resized);
-
-      // ✅ create preview urls from resized
-      const urls = resized.map((f) => URL.createObjectURL(f));
-      screensUrlRef.current = urls;
-      setScreenPreviews(urls);
     } catch (err) {
       console.error(err);
       setScreens([]);
@@ -600,9 +525,7 @@ export default function UploadGame() {
                 Close
               </button>
 
-              <button type="button" className="btn" onClick={openPreview} title="Preview draft page">
-                Preview
-              </button>
+             
 
               <button
                 type="button"
@@ -635,15 +558,7 @@ export default function UploadGame() {
               Preview
             </button>
 
-            <button
-              type="button"
-              className={`btn ${createdPath ? "btn-outline-on" : ""}`}
-              onClick={openViewPage}
-              disabled={!createdPath}
-              title={createdPath ? "View your game page" : "Upload first to enable View page"}
-            >
-              View page
-            </button>
+          
           </div>
         </div>
 
@@ -661,7 +576,12 @@ export default function UploadGame() {
 
               <div className="field">
                 <label className="label">Title</label>
-                <input className="input" placeholder="e.g., Banana Clicker" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <input
+                  className="input"
+                  placeholder="e.g., Banana Clicker"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
               </div>
 
               <div className="field">
@@ -891,7 +811,12 @@ export default function UploadGame() {
                   <span>Disabled</span>
                 </label>
                 <label className="radio">
-                  <input type="radio" name="community" checked={communityMode === "comments"} onChange={() => setCommunityMode("comments")} />
+                  <input
+                    type="radio"
+                    name="community"
+                    checked={communityMode === "comments"}
+                    onChange={() => setCommunityMode("comments")}
+                  />
                   <span>Comments — Add a comment thread to the page</span>
                 </label>
               </div>
@@ -901,9 +826,7 @@ export default function UploadGame() {
             <section className="box">
               <div className="box-head">
                 <div className="box-title">Visibility & access</div>
-                <div className="box-desc muted">
-                  Public on GPX means “submit for admin review” — it won’t appear on Home/Search until approved.
-                </div>
+                <div className="box-desc muted">Public on GPX means “submit for admin review” — it won’t appear on Home/Search until approved.</div>
               </div>
 
               <div className="radio-col">
@@ -931,14 +854,6 @@ export default function UploadGame() {
                 Preview
               </button>
 
-              <button
-                type="button"
-                className={`btn ${createdPath ? "btn-outline-on" : ""}`}
-                onClick={openViewPage}
-                disabled={!createdPath}
-              >
-                View page
-              </button>
 
               <button type="submit" className="btn btn-primary" disabled={busy}>
                 {busy ? (
