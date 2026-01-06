@@ -587,7 +587,7 @@ export default function UploadGame() {
               <div className="field">
                 <label className="label">Project URL</label>
                 <div className="url-row">
-                  <span className="url-prefix muted">https://gpx.gg/</span>
+                  <span className="url-prefix muted">https://bu.ghub.gg/</span>
                   <input
                     className="input input-clean"
                     placeholder="your-awesome-game"
@@ -826,7 +826,7 @@ export default function UploadGame() {
             <section className="box">
               <div className="box-head">
                 <div className="box-title">Visibility & access</div>
-                <div className="box-desc muted">Public on GPX means “submit for admin review” — it won’t appear on Home/Search until approved.</div>
+                <div className="box-desc muted">Public on BU GHub means “submit for admin review” — it won’t appear on Home/Search until approved.</div>
               </div>
 
               <div className="radio-col">
