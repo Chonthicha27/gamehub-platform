@@ -894,6 +894,7 @@ export default function GameDetail() {
       <div className="container section">
         <StyleGameDetail />
         <div className="gd-wrap">
+          
           <div className="gd-loadingCard">
             <div className="gd-spinner" />
             <div className="gd-loadingText">Loading…</div>
@@ -903,6 +904,7 @@ export default function GameDetail() {
       </div>
     );
   }
+  
 
   const tags = Array.isArray(game.tags) ? game.tags : [];
   const metaCategory = game.category || "—";
@@ -922,6 +924,19 @@ export default function GameDetail() {
       <StyleGameDetail />
 
       <div className="gd-wrap">
+        {isPreview ? (
+  <div className="gd-topEditBar">
+    <button
+      className="gd-btn"
+      type="button"
+      onClick={() => nav("/upload", { state: { draft } })}
+      title="Back to upload/edit form"
+    >
+      Back to edit
+    </button>
+  </div>
+) : null}
+
         <section className="gd-frame">
           {playable && !downloadOnly && fileSrc && !isPreview ? (
             <iframe
@@ -2258,6 +2273,12 @@ function StyleGameDetail() {
 }
 .gd-dangerBtn:hover{ filter: brightness(1.03); }
 .gd-dangerBtn:disabled{ opacity: .6; cursor:not-allowed; }
+.gd-topEditBar{
+  display:flex;
+  justify-content:flex-end; /* ✅ ชิดขวา */
+  margin: 0 0 10px 0;       /* เว้นจากกรอบเกมด้านล่าง */
+  padding-right: 2px;
+}
 
 `}</style>
   );

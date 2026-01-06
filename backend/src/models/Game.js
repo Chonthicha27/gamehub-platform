@@ -65,11 +65,15 @@ const GameSchema = new mongoose.Schema(
      * - review     = รอแอดมินอนุมัติ
      * - suspended  = ระงับ
      */
-    visibility: {
-      type: String,
-      enum: ["public", "unlisted", "private", "review", "suspended"],
-      default: "review", // ✅ FIX: ห้าม default เป็น public
-    },
+visibility: {
+  type: String,
+  enum: ["public", "unlisted", "private", "review", "suspended"],
+  default: "review",
+},
+
+// ✅ เพิ่มบรรทัดนี้
+prevVisibility: { type: String, default: "" },
+
 
     /**
      * สิ่งที่ user ขอ (ต้องรอแอดมิน)

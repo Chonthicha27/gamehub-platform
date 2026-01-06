@@ -1,5 +1,5 @@
 // frontend/src/pages/admin/AdminDashboard.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../api/axios";
 import "./admin.css";
 
@@ -92,10 +92,8 @@ function normalizeReportEntry(r) {
 
 /** reporter object อาจมาได้หลายชื่อ */
 function pickReporter(r = {}) {
-  // ถ้ารายงานทั้งก้อนเป็น user object เลย
   if (r && typeof r === "object" && (r.username || r.email || r.displayName)) return r;
 
-  // ชื่อที่พบบ่อย
   const candidate =
     r.user ||
     r.reporter ||
@@ -106,7 +104,6 @@ function pickReporter(r = {}) {
     r.createdBy ||
     null;
 
-  // บางทีเป็น id string
   if (typeof candidate === "string") return null;
 
   return candidate;
@@ -160,12 +157,11 @@ function reporterLabel(reporter, fallbackId) {
 function normalizeReasonKey(raw) {
   const s = safeStr(raw).toLowerCase();
   if (!s) return "";
-  // รองรับหลายแบบ
   if (s === "off topic" || s === "off-topic" || s === "off_topic") return "off_topic";
   if (s === "spam") return "spam";
   if (s === "offensive" || s === "abuse" || s === "harassment" || s === "hate") return "offensive";
   if (s === "other") return "other";
-  return s; // fallback
+  return s;
 }
 
 function reasonPrettyLabel(key) {
@@ -174,7 +170,6 @@ function reasonPrettyLabel(key) {
   if (k === "spam") return "Spam";
   if (k === "offensive") return "Offensive";
   if (k === "other") return "Other";
-  // fallback เป็น raw
   return safeStr(key) || "-";
 }
 
@@ -398,6 +393,9 @@ export default function AdminDashboard() {
   // report details toggle
   const [openReportKey, setOpenReportKey] = useState(null);
 
+  // ✅ NEW: จำสถานะเดิมก่อน suspend เพื่อ restore กลับได้ถูกต้อง
+  const prevGameVisibilityRef = useRef(new Map());
+
   const token = localStorage.getItem("token");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -608,14 +606,29 @@ export default function AdminDashboard() {
     }
   };
 
+  // ✅ FIX: suspend แล้ว state ต้องอัปเดตให้เห็นทันที และ normalize field ให้ชัวร์
   const suspendGame = async (game) => {
     const reason = prompt("Reason for suspension (sent to uploader via email)", "");
     if (reason === null) return;
 
     try {
-      const res = await api.patch(`/admin/games/${game._id}/suspend`, { reason }, { withCredentials: true, headers });
-      const updated = res.data.game || res.data;
+      // ✅ จำสถานะเดิมไว้เพื่อ restore (ไม่ให้หล่นไป review)
+      prevGameVisibilityRef.current.set(String(game._id), game.visibility || "public");
+
+      const res = await api.patch(
+        `/admin/games/${game._id}/suspend`,
+        { reason },
+        { withCredentials: true, headers }
+      );
+
+      const raw = res.data?.game || res.data || {};
+      const nextVisibility = raw.visibility ?? raw.status ?? "suspended";
+
+      const updated = { ...game, ...raw, visibility: nextVisibility };
+
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
+      setPendingGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
+
       alert("Game suspended and email sent (if available).");
     } catch (e) {
       console.error(e);
@@ -623,13 +636,30 @@ export default function AdminDashboard() {
     }
   };
 
+  // ✅ FIX: restore ต้องกลับสถานะเดิม (public/unlisted/private) ไม่ใช่ review
   const unsuspendGame = async (game) => {
     if (!confirm("Restore this game and make it available again?")) return;
 
     try {
-      const res = await api.patch(`/admin/games/${game._id}/unsuspend`, {}, { withCredentials: true, headers });
-      const updated = res.data.game || res.data;
+      const res = await api.patch(
+        `/admin/games/${game._id}/unsuspend`,
+        {},
+        { withCredentials: true, headers }
+      );
+
+      const raw = res.data?.game || res.data || {};
+
+      const prev = prevGameVisibilityRef.current.get(String(game._id)) || "public";
+      const backendVis = raw.visibility ?? raw.status ?? prev;
+
+      // ถ้า backend เผลอคืน review มา ให้ยึดสถานะเดิม
+      const fixedVis = backendVis === "review" ? prev : backendVis;
+
+      const updated = { ...game, ...raw, visibility: fixedVis };
+
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
+      setPendingGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
+
       alert("Game restored.");
     } catch (e) {
       console.error(e);
@@ -659,25 +689,24 @@ export default function AdminDashboard() {
 
   /* ---------- Comment actions ---------- */
 
-const hideComment = async (comment) => {
-  const reason = prompt("Reason for hiding this comment", "");
-  if (reason === null) return;
+  const hideComment = async (comment) => {
+    const reason = prompt("Reason for hiding this comment", "");
+    if (reason === null) return;
 
-  try {
-    await api.patch(
-      `/admin/comments/${comment._id}/hide`,
-      { reason },
-      { withCredentials: true, headers }
-    );
+    try {
+      await api.patch(
+        `/admin/comments/${comment._id}/hide`,
+        { reason },
+        { withCredentials: true, headers }
+      );
 
-    await refreshCommentsOnly();
-    alert("Comment hidden.");
-  } catch (e) {
-    console.error(e);
-    alert(e?.response?.data?.message || e.message);
-  }
-};
-
+      await refreshCommentsOnly();
+      alert("Comment hidden.");
+    } catch (e) {
+      console.error(e);
+      alert(e?.response?.data?.message || e.message);
+    }
+  };
 
   const restoreComment = async (comment) => {
     if (!confirm("Restore this comment?")) return;
@@ -746,7 +775,6 @@ const hideComment = async (comment) => {
     return comments.filter((c) => {
       const repArr = reportsArrayFromComment(c);
 
-      // ✅ include description in search text
       const reportSearchText = repArr
         .map((r) => {
           const rep = pickReporter(r);
@@ -1191,7 +1219,6 @@ const hideComment = async (comment) => {
                   const rowReportKey = `report:${c._id}`;
                   const open = openReportKey === rowReportKey;
 
-                  // ✅ summary: แสดง reason + description สั้น ๆ
                   const summaryItems = repArr.slice(0, 2).map((r, idx) => {
                     const rep = pickReporter(r);
                     const repId = getReporterId(r);
@@ -1200,7 +1227,11 @@ const hideComment = async (comment) => {
                     const desc = reportDescriptionLabel(r);
                     const descShort = desc ? ` — ${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}` : "";
                     return (
-                      <div key={idx} className="muted tiny ellipsis" title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "no-id"})`}>
+                      <div
+                        key={idx}
+                        className="muted tiny ellipsis"
+                        title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "no-id"})`}
+                      >
                         • {who} — {why}
                         {descShort}
                       </div>

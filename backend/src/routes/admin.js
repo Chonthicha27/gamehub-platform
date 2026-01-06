@@ -105,6 +105,10 @@ router.patch("/games/:id/approve", async (req, res) => {
   game.visibilityRequestedAt = null;
   game.suspendedReason = "";
   game.suspendedAt = null;
+
+  // ✅ เคลียร์ prevVisibility ด้วย (กันค้าง)
+  game.prevVisibility = "";
+
   await game.save();
 
   const email = game.uploader?.email;
@@ -127,23 +131,68 @@ router.get("/games", async (_req, res) => {
   res.json(games);
 });
 
+/**
+ * ✅ FIX SUSPEND:
+ * - เก็บ visibility เดิมไว้ใน prevVisibility (ครั้งแรกเท่านั้น)
+ * - set visibility = suspended
+ */
 router.patch("/games/:id/suspend", async (req, res) => {
   const game = await Game.findById(req.params.id).populate("uploader", "username email");
   if (!game) return res.status(404).json({ message: "Not found" });
+
+  // ✅ เก็บสถานะเดิมก่อน suspend (ถ้ายังไม่เคยเก็บ)
+  if (game.visibility !== "suspended" && !game.prevVisibility) {
+    game.prevVisibility = game.visibility || "review";
+  }
 
   game.visibility = "suspended";
   game.suspendedReason = req.body?.reason || "";
   game.suspendedAt = new Date();
   await game.save();
 
+  // (optional) ส่งอีเมลแจ้ง
+  const email = game.uploader?.email;
+  if (email) {
+    await sendMail({
+      to: email,
+      subject: `เกมของคุณ "${game.title}" ถูกระงับชั่วคราว`,
+      text: `เกมของคุณ "${game.title}" ถูกระงับชั่วคราว\nเหตุผล: ${game.suspendedReason || "-"}`,
+    }).catch(() => {});
+  }
+
   res.json({ game });
 });
 
+/**
+ * ✅ FIX UNSUSPEND:
+ * - restore กลับเป็น prevVisibility ถ้ามี
+ * - ถ้าไม่มี prevVisibility:
+ *   - ถ้าเคยขอ public และอยู่ review + requestedVisibility=public → ให้กลับ review (รออนุมัติ)
+ *   - ไม่งั้น default เป็น public (หรือ review ถ้าคุณอยากปลอดภัย)
+ */
 router.patch("/games/:id/unsuspend", async (req, res) => {
   const game = await Game.findById(req.params.id);
   if (!game) return res.status(404).json({ message: "Not found" });
 
-  game.visibility = game.requestedVisibility === "public" ? "public" : "review";
+  let restoreTo = "";
+
+  // ✅ อันดับแรก: ถ้ามี prevVisibility ให้ใช้เลย
+  if (game.prevVisibility) {
+    restoreTo = game.prevVisibility;
+  } else {
+    // fallback แบบมีเหตุผล
+    // ถ้าเกมนี้เดิมเป็น review เพราะขอ public (requestedVisibility=public) ก็กลับไป review
+    if (game.requestedVisibility === "public") restoreTo = "review";
+    else restoreTo = "public";
+  }
+
+  // กันค่าหลุด enum
+  if (!["public", "unlisted", "private", "review"].includes(restoreTo)) {
+    restoreTo = "public";
+  }
+
+  game.visibility = restoreTo;
+  game.prevVisibility = ""; // ✅ เคลียร์หลัง restore
   game.suspendedReason = "";
   game.suspendedAt = null;
   await game.save();
@@ -161,11 +210,10 @@ router.delete("/games/:id", async (req, res) => {
 
 /* ===== Comments ===== */
 
-// ✅ Admin ไม่เห็นคอมเมนต์ที่ hidden (เหมือน role อื่นๆ)
 router.get("/comments", async (_req, res) => {
   const comments = await Comment.find({
-    status: { $ne: "deleted" },          // ไม่เอา deleted
-    reportsCount: { $gt: 0 },            // เอาเฉพาะที่มี report
+    status: { $ne: "deleted" },
+    reportsCount: { $gt: 0 },
   })
     .sort("-createdAt")
     .populate("author", "username email")
@@ -176,8 +224,6 @@ router.get("/comments", async (_req, res) => {
   res.json(comments);
 });
 
-
-// ✅ FIX: hide ต้อง save จริง + ซ่อน replies ด้วย + เก็บคนซ่อน/เวลา
 router.patch("/comments/:id/hide", async (req, res) => {
   const reason = (req.body?.reason || "").trim();
   const adminId = req.user?._id;
@@ -199,7 +245,6 @@ router.patch("/comments/:id/hide", async (req, res) => {
 
   if (!updated) return res.status(404).json({ message: "Not found" });
 
-  // ซ่อน replies ของคอมเมนต์นี้ด้วย
   await Comment.updateMany(
     { parentId: updated._id },
     {
@@ -215,7 +260,6 @@ router.patch("/comments/:id/hide", async (req, res) => {
   res.json(updated);
 });
 
-// ✅ restore ก็ restore replies ด้วย
 router.patch("/comments/:id/restore", async (req, res) => {
   const adminId = req.user?._id;
 
@@ -236,11 +280,7 @@ router.patch("/comments/:id/restore", async (req, res) => {
 
   if (!updated) return res.status(404).json({ message: "Not found" });
 
-  // restore replies ของคอมเมนต์นี้ด้วย
-  await Comment.updateMany(
-    { parentId: updated._id },
-    { $set: { status: "visible" } }
-  );
+  await Comment.updateMany({ parentId: updated._id }, { $set: { status: "visible" } });
 
   res.json(updated);
 });

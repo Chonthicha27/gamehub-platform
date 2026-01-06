@@ -1,6 +1,6 @@
 // frontend/src/pages/UploadGame.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
 /** Main categories (used for uploading games) */
@@ -25,6 +25,8 @@ const CATEGORIES = [
   { id: "visual-novel", name: "Visual Novel", emoji: "💬", color: "#c4b5fd" },
   { id: "other", name: "Other", emoji: "✨", color: "#9ca3af" },
 ];
+
+const DRAFT_KEY = "gpx_upload_draft";
 
 /** Resize image with Canvas (keeps aspect ratio) */
 async function resizeImage(file, maxW = 1200, maxH = 675, mime = "image/jpeg", quality = 0.9) {
@@ -68,11 +70,12 @@ const toSafeSlug = (s = "") =>
 
 export default function UploadGame() {
   const nav = useNavigate();
+  const location = useLocation();
 
   // ===== Basics (sent to backend) =====
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false); // ✅ NEW: กัน title มาทับ slug หลัง user แก้เอง
+  const [slugTouched, setSlugTouched] = useState(false);
   const [tagline, setTagline] = useState("");
   const [description, setDescription] = useState("");
 
@@ -86,7 +89,7 @@ export default function UploadGame() {
 
   // kind (sent to backend)
   const [kind, setKind] = useState("html"); // 'html' | 'download'
-  const [kindOpen, setKindOpen] = useState(false); // ✅ NEW: custom dropdown
+  const [kindOpen, setKindOpen] = useState(false);
 
   // community (sent to backend now)
   const [communityMode, setCommunityMode] = useState("comments"); // off | comments
@@ -102,6 +105,10 @@ export default function UploadGame() {
   // previews
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
+
+  // ✅ keep object URLs alive across route changes (don’t revoke on unmount)
+  const coverUrlRef = useRef("");
+  const screensUrlRef = useRef([]);
 
   // media (sent to backend)
   const [videoUrl, setVideoUrl] = useState("");
@@ -128,23 +135,10 @@ export default function UploadGame() {
     setSlug(toSafeSlug(title));
   }, [title, slugTouched]);
 
-  // preview cover
-  useEffect(() => {
-    if (!coverFile) return setCoverPreview("");
-    const url = URL.createObjectURL(coverFile);
-    setCoverPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [coverFile]);
-
-  // preview screenshots
-  useEffect(() => {
-    if (!screens.length) return setScreenPreviews([]);
-    const urls = screens.map((f) => URL.createObjectURL(f));
-    setScreenPreviews(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, [screens]);
-
-  const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
+  const currentCat = useMemo(
+    () => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0],
+    [category]
+  );
 
   // tag helpers
   const addTag = () => {
@@ -156,8 +150,154 @@ export default function UploadGame() {
   };
   const removeTag = (t) => setTags((x) => x.filter((i) => i !== t));
 
+  // accept by kind
+  const acceptForKind = kind === "html" ? ".html,.htm,.zip" : ".rar";
+
+  // ✅ PREVIEW DRAFT (works before upload)
+  const buildDraft = () => ({
+    title: title.trim(),
+    slug: slug || "",
+    tagline: tagline || "",
+    description: description || "",
+    category,
+    kind,
+    tags,
+    visibility,
+    communityMode,
+    videoUrl: videoUrl || "",
+    coverPreview: coverPreview || "",
+    screenPreviews: screenPreviews || [],
+    gameFileName: gameFile?.name || "",
+  });
+
+  // ✅ Restore draft -> fill form (text fields)
+  const applyDraftToForm = (d) => {
+    const draft = d || {};
+    setTitle(draft.title || "");
+    setTagline(draft.tagline || "");
+    setDescription(draft.description || "");
+
+    setCategory(draft.category || "no-genre");
+    setKind(draft.kind === "download" ? "download" : "html");
+    setTags(Array.isArray(draft.tags) ? draft.tags : []);
+    setCommunityMode(draft.communityMode === "off" ? "off" : "comments");
+
+    // visibility mapping keep backend values
+    setVisibility(draft.visibility || "review");
+
+    setVideoUrl(draft.videoUrl || "");
+
+    // slug logic: ถ้ามี slug จาก draft ให้ถือว่า user เคยแก้เอง
+    if (String(draft.slug || "").trim()) {
+      setSlug(draft.slug);
+      setSlugTouched(true);
+    } else {
+      setSlug("");
+      setSlugTouched(false);
+    }
+
+    // ✅ preview urls (อาจใช้ได้เฉพาะ session เดิม/ก่อน refresh)
+    if (draft.coverPreview) setCoverPreview(draft.coverPreview);
+    if (Array.isArray(draft.screenPreviews)) setScreenPreviews(draft.screenPreviews);
+
+    // ไฟล์จริง restore ไม่ได้ (browser security)
+    setGameFile(null);
+    setCoverFile(null);
+    setScreens([]);
+
+    // แนะนำ user ให้เลือกไฟล์ใหม่ถ้าจำเป็น
+    setMsg((prev) => prev || "Draft restored. Please re-attach files before uploading.");
+  };
+
+  // ✅ On mount: load draft from nav state OR sessionStorage
+  useEffect(() => {
+    const fromState = location?.state?.draft;
+    if (fromState) {
+      try {
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(fromState));
+      } catch {}
+      applyDraftToForm(fromState);
+      return;
+    }
+
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") applyDraftToForm(parsed);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ Auto-save draft while editing (text fields only)
+  useEffect(() => {
+    // ไม่ต้องเซฟตอนกำลัง upload
+    if (busy) return;
+
+    const t = setTimeout(() => {
+      try {
+        const d = buildDraft();
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+      } catch {}
+    }, 250);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title,
+    slug,
+    tagline,
+    description,
+    category,
+    kind,
+    tags,
+    visibility,
+    communityMode,
+    videoUrl,
+    coverPreview,
+    screenPreviews,
+    busy,
+  ]);
+
+  const openPreview = () => {
+    const draft = buildDraft();
+
+    if (!draft.title) {
+      setMsg("Please enter a title before previewing.");
+      return;
+    }
+
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+
+    nav("/preview", { state: { draft } });
+  };
+
+  // ✅ View page after upload (real page)
+  const openViewPage = () => {
+    if (!createdPath) return;
+    nav(createdPath);
+  };
+
   // reset
   const resetForm = () => {
+    // ✅ revoke previews (avoid memory leak)
+    if (coverUrlRef.current) {
+      try {
+        URL.revokeObjectURL(coverUrlRef.current);
+      } catch {}
+      coverUrlRef.current = "";
+    }
+    if (Array.isArray(screensUrlRef.current)) {
+      screensUrlRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+      screensUrlRef.current = [];
+    }
+
     setTitle("");
     setSlug("");
     setSlugTouched(false);
@@ -183,45 +323,95 @@ export default function UploadGame() {
     setShowSuccess(false);
     setSuccessNote("");
 
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {}
+
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (coverInputRef.current) coverInputRef.current.value = "";
     if (screensInputRef.current) screensInputRef.current.value = "";
   };
 
-  /** cover + resize before upload */
+  /** ✅ cover + resize before upload (KEEP preview alive across route changes) */
   const onCoverChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return setCoverFile(null);
+
+    if (!file) {
+      // revoke old
+      if (coverUrlRef.current) {
+        try {
+          URL.revokeObjectURL(coverUrlRef.current);
+        } catch {}
+      }
+      coverUrlRef.current = "";
+      setCoverFile(null);
+      setCoverPreview("");
+      return;
+    }
+
     try {
       const resized = await resizeImage(file, 1200, 675, "image/jpeg", 0.9);
       setCoverFile(resized);
+
+      // ✅ create preview url + revoke old
+      const nextUrl = URL.createObjectURL(resized);
+      if (coverUrlRef.current) {
+        try {
+          URL.revokeObjectURL(coverUrlRef.current);
+        } catch {}
+      }
+      coverUrlRef.current = nextUrl;
+      setCoverPreview(nextUrl);
     } catch (err) {
       console.error(err);
       setCoverFile(null);
+
+      if (coverUrlRef.current) {
+        try {
+          URL.revokeObjectURL(coverUrlRef.current);
+        } catch {}
+      }
+      coverUrlRef.current = "";
+      setCoverPreview("");
+
       setMsg("Cover image could not be processed. Please try another image.");
     }
   };
 
-  /** screenshots + resize before upload */
+  /** ✅ screenshots + resize before upload (KEEP preview alive across route changes) */
   const onScreensChange = async (e) => {
     const files = Array.from(e.target.files || []).slice(0, 5);
+
+    // revoke old previews
+    if (Array.isArray(screensUrlRef.current)) {
+      screensUrlRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      });
+    }
+    screensUrlRef.current = [];
+    setScreenPreviews([]);
+
+    if (files.length === 0) {
+      setScreens([]);
+      return;
+    }
+
     const resized = [];
     try {
       for (const f of files) resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
       setScreens(resized);
+
+      // ✅ create preview urls from resized
+      const urls = resized.map((f) => URL.createObjectURL(f));
+      screensUrlRef.current = urls;
+      setScreenPreviews(urls);
     } catch (err) {
       console.error(err);
       setScreens([]);
       setMsg("Screenshots could not be processed. Please try different images.");
     }
-  };
-
-  // accept by kind
-  const acceptForKind = kind === "html" ? ".html,.htm,.zip" : ".rar";
-
-  const openViewPage = () => {
-    if (!createdPath) return;
-    nav(createdPath);
   };
 
   /**
@@ -233,7 +423,6 @@ export default function UploadGame() {
     const requested = String(created?.requestedVisibility || "").toLowerCase();
     const selected = String(selectedVisibility || "").toLowerCase();
 
-    // Case: user selected Public but it becomes "review" waiting for approval
     if (requested === "public" && savedVis === "review") {
       return (
         "Upload successful ✅\n" +
@@ -243,22 +432,18 @@ export default function UploadGame() {
       );
     }
 
-    // Case: actually Public
     if (savedVis === "public") {
       return "Upload successful ✅\n" + "Your project is now Public.\n" + "It can appear on Home/Search.";
     }
 
-    // Case: Draft/Review
     if (savedVis === "review") {
       return "Upload successful ✅\n" + "Saved as Draft.\n" + "Only you and admins can view this page.";
     }
 
-    // Case: Private/Restricted
     if (savedVis === "private") {
       return "Upload successful ✅\n" + "Saved as Restricted (Private).\n" + "Only you and admins can view this page.";
     }
 
-    // Fallback
     return "Upload successful ✅\n" + `Saved visibility: ${savedVis || selected || "unknown"}`;
   };
 
@@ -300,7 +485,6 @@ export default function UploadGame() {
       screens.forEach((f) => fd.append("screens[]", f));
       if (videoUrl.trim()) fd.append("videoUrl", videoUrl.trim());
 
-      // interceptor จะใส่ token ให้อยู่แล้ว แต่คงไว้ก็ไม่พัง
       const token = localStorage.getItem("token");
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -329,20 +513,22 @@ export default function UploadGame() {
         return;
       }
 
-      // ✅ your router uses /games/:id
       const path = `/games/${id}`;
       setCreatedPath(path);
 
-      // ✅ EN modal note (matches saved state)
       setSuccessNote(buildSuccessNote(created, visibility));
       setShowSuccess(true);
 
       setMsg("Uploaded successfully! 🎉");
 
+      // optional: clear draft because now it's real
+      try {
+        sessionStorage.removeItem(DRAFT_KEY);
+      } catch {}
+
       console.log("POST /games payload:", payload);
       console.log("normalized created:", created);
       console.log("createdPath:", path);
-      // do not reset so View page works
     } catch (err) {
       const code = err?.response?.status;
       if (code === 401) {
@@ -404,7 +590,7 @@ export default function UploadGame() {
                 </div>
               ) : (
                 <div className="modal-hint muted">
-                  Note: The system did not return a game page path/id. (Check the response in Console.)
+                  Tip: You can use <b>Preview</b> anytime to see the draft before uploading.
                 </div>
               )}
             </div>
@@ -412,6 +598,10 @@ export default function UploadGame() {
             <div className="modal-actions">
               <button type="button" className="btn" onClick={() => setShowSuccess(false)}>
                 Close
+              </button>
+
+              <button type="button" className="btn" onClick={openPreview} title="Preview draft page">
+                Preview
               </button>
 
               <button
@@ -435,10 +625,16 @@ export default function UploadGame() {
         <div className="itch-top">
           <div>
             <h1 className="itch-title">Create a new project</h1>
-            <div className="itch-sub">Set up your game page: title, cover, files, screenshots, trailer, tags, and details.</div>
+            <div className="itch-sub">
+              Set up your game page: title, cover, files, screenshots, trailer, tags, and details.
+            </div>
           </div>
 
           <div className="itch-meta">
+            <button type="button" className="btn" onClick={openPreview} title="Preview draft page">
+              Preview
+            </button>
+
             <button
               type="button"
               className={`btn ${createdPath ? "btn-outline-on" : ""}`}
@@ -502,7 +698,6 @@ export default function UploadGame() {
                 <div className="field">
                   <label className="label">Kind of project</label>
 
-                  {/* ✅ Custom dropdown to match Genre */}
                   <div className="kind-select">
                     <button
                       type="button"
@@ -696,12 +891,7 @@ export default function UploadGame() {
                   <span>Disabled</span>
                 </label>
                 <label className="radio">
-                  <input
-                    type="radio"
-                    name="community"
-                    checked={communityMode === "comments"}
-                    onChange={() => setCommunityMode("comments")}
-                  />
+                  <input type="radio" name="community" checked={communityMode === "comments"} onChange={() => setCommunityMode("comments")} />
                   <span>Comments — Add a comment thread to the page</span>
                 </label>
               </div>
@@ -717,8 +907,6 @@ export default function UploadGame() {
               </div>
 
               <div className="radio-col">
-              
-
                 <label className="radio">
                   <input type="radio" name="vis" checked={visChoice === "restricted"} onChange={() => setVisByChoice("restricted")} />
                   <span>Restricted — Only owners & authorized people can view the page</span>
@@ -739,7 +927,16 @@ export default function UploadGame() {
                 Reset
               </button>
 
-              <button type="button" className={`btn ${createdPath ? "btn-outline-on" : ""}`} onClick={openViewPage} disabled={!createdPath}>
+              <button type="button" className="btn" onClick={openPreview} disabled={busy}>
+                Preview
+              </button>
+
+              <button
+                type="button"
+                className={`btn ${createdPath ? "btn-outline-on" : ""}`}
+                onClick={openViewPage}
+                disabled={!createdPath}
+              >
                 View page
               </button>
 
@@ -968,7 +1165,7 @@ function StyleLocal() {
 .url-row{ display:flex; align-items:center; gap:8px; }
 .url-prefix{ font-size:13px; white-space:nowrap; opacity:.9; }
 
-/* ✅ Kind of project (CUSTOM dropdown) ให้เหมือน Genre */
+/* Kind dropdown */
 .kind-select{ position:relative; }
 .kind-trigger{
   width:100%;
@@ -987,8 +1184,6 @@ function StyleLocal() {
 .kind-trigger:hover{ border-color:#6bd9ff; }
 .kind-trigger svg{ opacity:.85; transition:.2s; }
 .kind-trigger svg.rot{ transform:rotate(180deg); }
-.kind-menu{ min-width: 360px; }
-
 .kind-menu{
   position:absolute; top:48px; left:0; right:0; z-index:30;
   border-radius:12px;
@@ -1002,7 +1197,6 @@ function StyleLocal() {
   cursor:pointer;
   color:var(--text);
 }
-
 .kind-item:hover{ background: rgba(255,255,255,.06); }
 .kind-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
 
@@ -1045,22 +1239,9 @@ function StyleLocal() {
 .cat-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
 
 /* tags */
-.tag-row{
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
-.tag-row .input{
-  padding:8px 10px;
-  font-size:13px;
-  height:40px;
-}
-.tag-row .btn{
-  padding:8px 12px;
-  font-size:13px;
-  height:40px;
-  white-space:nowrap;
-}
+.tag-row{ display:flex; gap:10px; align-items:center; }
+.tag-row .input{ padding:8px 10px; font-size:13px; height:40px; }
+.tag-row .btn{ padding:8px 12px; font-size:13px; height:40px; white-space:nowrap; }
 
 .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
 .chip{
@@ -1115,11 +1296,7 @@ function StyleLocal() {
   border-color:#6bd9ff;
   background: rgba(72,208,255,.10);
 }
-.btn-small{
-  padding:8px 10px;
-  font-size:12px;
-  height:40px;
-}
+.btn-small{ padding:8px 10px; font-size:12px; height:40px; }
 .actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
 .spinner{
   width:14px; height:14px; border-radius:999px;
