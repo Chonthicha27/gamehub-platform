@@ -106,6 +106,10 @@ export default function UploadGame() {
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
 
+  // ✅ เก็บ URL เดิมไว้ เพื่อ revoke ตอน “เปลี่ยนไฟล์/รีเซ็ต”
+  const coverPreviewRef = useRef("");
+  const screenPreviewRefs = useRef([]);
+
   // media (sent to backend)
   const [videoUrl, setVideoUrl] = useState("");
 
@@ -131,20 +135,57 @@ export default function UploadGame() {
     setSlug(toSafeSlug(title));
   }, [title, slugTouched]);
 
-  // preview cover (from coverFile)
+  // ✅ preview cover (from coverFile) — IMPORTANT FIX: ไม่ revoke ตอน unmount
   useEffect(() => {
-    if (!coverFile) return;
+    // ถ้าไม่มี coverFile ให้เคลียร์ + revoke ของเดิม
+    if (!coverFile) {
+      if (coverPreviewRef.current) {
+        try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+        coverPreviewRef.current = "";
+      }
+      setCoverPreview("");
+      return;
+    }
+
+    // revoke ของเดิมก่อนสร้างใหม่ (กัน leak)
+    if (coverPreviewRef.current) {
+      try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+      coverPreviewRef.current = "";
+    }
+
     const url = URL.createObjectURL(coverFile);
+    coverPreviewRef.current = url;
     setCoverPreview(url);
-    return () => URL.revokeObjectURL(url);
+
+    // ❌ อย่าคืน cleanup ที่ revoke ตอน unmount
   }, [coverFile]);
 
-  // preview screenshots (from screens)
+  // ✅ preview screenshots (from screens) — IMPORTANT FIX: ไม่ revoke ตอน unmount
   useEffect(() => {
-    if (!screens.length) return;
+    // ถ้าไม่มี screens ให้เคลียร์ + revoke ของเดิม
+    if (!screens.length) {
+      if (screenPreviewRefs.current?.length) {
+        screenPreviewRefs.current.forEach((u) => {
+          try { URL.revokeObjectURL(u); } catch {}
+        });
+      }
+      screenPreviewRefs.current = [];
+      setScreenPreviews([]);
+      return;
+    }
+
+    // revoke ของเดิมก่อนสร้างใหม่ (กัน leak)
+    if (screenPreviewRefs.current?.length) {
+      screenPreviewRefs.current.forEach((u) => {
+        try { URL.revokeObjectURL(u); } catch {}
+      });
+    }
+
     const urls = screens.map((f) => URL.createObjectURL(f));
+    screenPreviewRefs.current = urls;
     setScreenPreviews(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+
+    // ❌ อย่าคืน cleanup ที่ revoke ตอน unmount
   }, [screens]);
 
   const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
@@ -174,6 +215,7 @@ export default function UploadGame() {
     visibility,
     communityMode,
     videoUrl: videoUrl || "",
+    // ✅ NOTE: blob urls ใช้ได้เฉพาะตอน navigate ภายใน session
     coverPreview: coverPreview || "",
     screenPreviews: screenPreviews || [],
     gameFileName: gameFile?.name || "",
@@ -191,12 +233,9 @@ export default function UploadGame() {
     setTags(Array.isArray(draft.tags) ? draft.tags : []);
     setCommunityMode(draft.communityMode === "off" ? "off" : "comments");
 
-    // visibility mapping keep backend values
     setVisibility(draft.visibility || "review");
-
     setVideoUrl(draft.videoUrl || "");
 
-    // slug logic: ถ้ามี slug จาก draft ให้ถือว่า user เคยแก้เอง
     if (String(draft.slug || "").trim()) {
       setSlug(draft.slug);
       setSlugTouched(true);
@@ -205,16 +244,14 @@ export default function UploadGame() {
       setSlugTouched(false);
     }
 
-    // ✅ preview urls (อาจใช้ได้เฉพาะ session เดิม/ก่อน refresh)
+    // ✅ preview urls (ถ้าเป็น blob: แล้วกด refresh มักใช้ไม่ได้อยู่แล้ว)
     if (draft.coverPreview) setCoverPreview(draft.coverPreview);
     if (Array.isArray(draft.screenPreviews)) setScreenPreviews(draft.screenPreviews);
 
-    // ไฟล์จริง restore ไม่ได้ (browser security)
     setGameFile(null);
     setCoverFile(null);
     setScreens([]);
 
-    // แนะนำ user ให้เลือกไฟล์ใหม่ถ้าจำเป็น
     setMsg((prev) => prev || "Draft restored. Please re-attach files before uploading.");
   };
 
@@ -240,7 +277,6 @@ export default function UploadGame() {
 
   // ✅ Auto-save draft while editing (text fields only)
   useEffect(() => {
-    // ไม่ต้องเซฟตอนกำลัง upload
     if (busy) return;
 
     const t = setTimeout(() => {
@@ -275,7 +311,7 @@ export default function UploadGame() {
     nav(createdPath);
   };
 
-  // reset
+  // ✅ reset + revoke urls (IMPORTANT)
   const resetForm = () => {
     setTitle("");
     setSlug("");
@@ -293,14 +329,28 @@ export default function UploadGame() {
     setGameFile(null);
     setCoverFile(null);
     setScreens([]);
-    setCoverPreview("");
-    setScreenPreviews([]);
     setVideoUrl("");
     setProgress(0);
     setMsg("");
     setCreatedPath("");
     setShowSuccess(false);
     setSuccessNote("");
+
+    // ✅ revoke cover preview
+    if (coverPreviewRef.current) {
+      try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+      coverPreviewRef.current = "";
+    }
+    setCoverPreview("");
+
+    // ✅ revoke screen previews
+    if (screenPreviewRefs.current?.length) {
+      screenPreviewRefs.current.forEach((u) => {
+        try { URL.revokeObjectURL(u); } catch {}
+      });
+      screenPreviewRefs.current = [];
+    }
+    setScreenPreviews([]);
 
     try {
       sessionStorage.removeItem(DRAFT_KEY);
@@ -380,7 +430,6 @@ export default function UploadGame() {
     if (!title.trim()) return setMsg("Please enter a game title.");
     if (!gameFile) return setMsg("Please attach your game file.");
 
-    // validate file by kind
     if (kind === "html" && !/\.(html?|zip)$/i.test(gameFile.name)) {
       return setMsg("HTML mode supports only .html or .zip files.");
     }
@@ -400,8 +449,6 @@ export default function UploadGame() {
       fd.append("category", category);
       fd.append("visibility", visibility);
       fd.append("kind", kind);
-
-      // ✅ ส่งค่าเปิด/ปิดคอมเมนต์ให้ backend (ตรงกับ backend: commentsEnabled)
       fd.append("commentsEnabled", communityMode === "comments" ? "true" : "false");
 
       tags.forEach((t) => fd.append("tags[]", t));
@@ -421,7 +468,6 @@ export default function UploadGame() {
         },
       });
 
-      // ✅ normalize response
       const payload = res?.data || {};
       const created = payload?.game || payload?.data || payload?.result || payload?.created || payload || {};
       const id = firstNonEmpty(created?._id, created?.id, created?.gameId);
@@ -446,7 +492,6 @@ export default function UploadGame() {
 
       setMsg("Uploaded successfully! 🎉");
 
-      // optional: clear draft because now it's real
       try {
         sessionStorage.removeItem(DRAFT_KEY);
       } catch {}
@@ -467,7 +512,6 @@ export default function UploadGame() {
     }
   };
 
-  // itch-like visibility radio mapping (keeps backend values)
   const visChoice = useMemo(() => {
     if (visibility === "review") return "draft";
     if (visibility === "private") return "restricted";
@@ -525,8 +569,6 @@ export default function UploadGame() {
                 Close
               </button>
 
-             
-
               <button
                 type="button"
                 className={`btn ${createdPath ? "btn-outline-on" : ""}`}
@@ -557,8 +599,6 @@ export default function UploadGame() {
             <button type="button" className="btn" onClick={openPreview} title="Preview draft page">
               Preview
             </button>
-
-          
           </div>
         </div>
 
@@ -853,7 +893,6 @@ export default function UploadGame() {
               <button type="button" className="btn" onClick={openPreview} disabled={busy}>
                 Preview
               </button>
-
 
               <button type="submit" className="btn btn-primary" disabled={busy}>
                 {busy ? (

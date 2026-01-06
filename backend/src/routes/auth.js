@@ -9,6 +9,42 @@ const { sendMail } = require("../utils/mailer");
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:4000";
 
+/* -----------------------------
+  helpers: suspend checker
+------------------------------ */
+function pickSuspendUntil(user) {
+  return (
+    user?.suspendedUntil ||
+    user?.suspensionEndsAt ||
+    user?.suspendedUntilAt ||
+    user?.suspendUntil ||
+    null
+  );
+}
+function isSuspendedNow(user) {
+  if (!user) return { suspended: false };
+  if (String(user.status || "").toLowerCase() !== "suspended") return { suspended: false };
+
+  const until = pickSuspendUntil(user);
+  // ถ้าไม่มี until = suspend ถาวร
+  if (!until) {
+    return { suspended: true, until: null, reason: user.suspendedReason || "" };
+  }
+
+  const d = new Date(until);
+  if (Number.isNaN(d.getTime())) {
+    // until แปลไม่ได้ ก็ให้กันไว้ก่อนเพื่อความปลอดภัย
+    return { suspended: true, until: null, reason: user.suspendedReason || "" };
+  }
+
+  if (d > new Date()) {
+    return { suspended: true, until: d, reason: user.suspendedReason || "" };
+  }
+
+  // หมดอายุแล้ว
+  return { suspended: false };
+}
+
 // login status (จาก session)
 router.get("/me", (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Unauthorized" });
@@ -232,6 +268,17 @@ router.post("/login", async (req, res) => {
       message:
         "บัญชีนี้สร้างด้วย OAuth โปรดล็อกอินด้วยปุ่ม Google/GitHub",
     });
+
+  // ✅ NEW: ถ้าถูกระงับ ห้ามล็อกอิน
+  const susp = isSuspendedNow(user);
+  if (susp.suspended) {
+    return res.status(403).json({
+      message: "Account suspended",
+      code: "SUSPENDED",
+      reason: susp.reason || user.suspendedReason || "",
+      suspendedUntil: susp.until ? susp.until.toISOString() : null,
+    });
+  }
 
   // ถ้าอนาคตอยากบังคับให้ยืนยันอีเมลก่อนใช้ ให้ uncomment ตรงนี้
   // if (!user.emailVerified)

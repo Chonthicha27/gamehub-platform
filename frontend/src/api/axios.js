@@ -9,7 +9,7 @@ const api = axios.create({
   withCredentials: true, // ต้องมีเพื่อให้ cookie / session ทำงานข้ามโดเมน
 });
 
-// ✅ Auto attach Bearer token for ALL requests (สำคัญมากสำหรับ /users/me, /games/:id)
+// ✅ Auto attach Bearer token for ALL requests
 api.interceptors.request.use((config) => {
   try {
     const token = localStorage.getItem("token");
@@ -17,5 +17,69 @@ api.interceptors.request.use((config) => {
   } catch {}
   return config;
 });
+
+function formatUntil(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString();
+  } catch {
+    return "";
+  }
+}
+
+async function bestEffortLogout() {
+  // พยายามล้าง session cookie (passport) ด้วย
+  try {
+    await api.get("/auth/logout", { withCredentials: true });
+  } catch {}
+}
+
+function goHomeLoggedOut() {
+  // ถ้าเว็บคุณเป็น SPA ที่หน้า login เป็น modal บนหน้า home
+  // ให้กลับ / เพื่อเห็นหน้า home แบบไม่ล็อกอิน
+  if (window.location.pathname !== "/") {
+    window.location.href = "/";
+  } else {
+    // อยู่หน้า home อยู่แล้ว -> รีเฟรชสถานะ
+    window.location.reload();
+  }
+}
+
+// ✅ Auto handle suspended user (1 popup only)
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const status = err?.response?.status;
+    const data = err?.response?.data || {};
+    const code = data?.code;
+
+    if (status === 403 && code === "SUSPENDED") {
+      const reason = (data.reason || "").toString().trim();
+      const untilTxt = formatUntil(data.suspendedUntil);
+
+      let msg = "บัญชีถูกระงับการใช้งาน";
+      if (reason) msg += `\nเหตุผล: ${reason}`;
+      if (untilTxt) msg += `\nถึง: ${untilTxt}`;
+
+      // ล้าง token ฝั่ง client
+      try {
+        localStorage.removeItem("token");
+      } catch {}
+
+      // ล้าง session cookie ฝั่ง server (กันกรณีใช้ passport session)
+      await bestEffortLogout();
+
+      alert(msg);
+      goHomeLoggedOut();
+
+      // ✅ กันไม่ให้ error นี้ไปถึง caller แล้วเด้งซ้อน
+      return new Promise(() => {});
+    }
+
+    return Promise.reject(err);
+  }
+);
 
 export default api;

@@ -5,6 +5,7 @@ const { authRequired } = require("../middleware/auth");
 
 const MonthlyVote = require("../models/MonthlyVote");
 const Game = require("../models/Game");
+const User = require("../models/User");
 const { getMonthKey } = require("../utils/date");
 
 /**
@@ -82,9 +83,16 @@ router.get("/monthly-vote/leaderboard", async (req, res) => {
       { $limit: 50 },
     ]);
 
-    const results = await Game.populate(agg, {
+    // ✅ populate game
+    let results = await Game.populate(agg, {
       path: "_id",
       select: "title coverUrl uploader slug visibility",
+    });
+
+    // ✅ populate uploader ต่อให้มี username
+    results = await User.populate(results, {
+      path: "_id.uploader",
+      select: "username displayName email",
     });
 
     res.json(results);
