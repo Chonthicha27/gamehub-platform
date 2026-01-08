@@ -5,7 +5,7 @@ import api from "../api/axios";
 
 /** Main categories (used for uploading games) */
 const CATEGORIES = [
-  { id: "no-genre", name: "No genre", emoji: "—", color: "#9ca3af" },
+  { id: "no-genre", name: "No Category", emoji: "—", color: "#9ca3af" },
   { id: "action", name: "Action", emoji: "🗡️", color: "#f97373" },
   { id: "adventure", name: "Adventure", emoji: "🧭", color: "#38bdf8" },
   { id: "card-game", name: "Card Game", emoji: "🃏", color: "#fb7185" },
@@ -68,6 +68,10 @@ const toSafeSlug = (s = "") =>
     .replace(/\s+/g, "-")
     .slice(0, 48);
 
+/** UI helper */
+const isHtmlOk = (name = "") => /\.(html?|zip)$/i.test(String(name || ""));
+const isRarOk = (name = "") => /\.rar$/i.test(String(name || ""));
+
 export default function UploadGame() {
   const nav = useNavigate();
   const location = useLocation();
@@ -106,7 +110,7 @@ export default function UploadGame() {
   const [coverPreview, setCoverPreview] = useState("");
   const [screenPreviews, setScreenPreviews] = useState([]);
 
-  // ✅ เก็บ URL เดิมไว้ เพื่อ revoke ตอน “เปลี่ยนไฟล์/รีเซ็ต”
+  // ✅ keep url to revoke later
   const coverPreviewRef = useRef("");
   const screenPreviewRefs = useRef([]);
 
@@ -116,7 +120,17 @@ export default function UploadGame() {
   // ui
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [msg, setMsg] = useState("");
+
+  // ✅ message -> type + text (error/info/success)
+  const [notice, setNotice] = useState({ type: "", text: "" });
+
+  // ✅ inline field errors (for red boxes)
+  const [errors, setErrors] = useState({
+    title: "",
+    gameFile: "",
+    cover: "",
+    screens: "",
+  });
 
   // ✅ after upload: enable View page button
   const [createdPath, setCreatedPath] = useState("");
@@ -135,38 +149,39 @@ export default function UploadGame() {
     setSlug(toSafeSlug(title));
   }, [title, slugTouched]);
 
-  // ✅ preview cover (from coverFile) — IMPORTANT FIX: ไม่ revoke ตอน unmount
+  // ✅ preview cover
   useEffect(() => {
-    // ถ้าไม่มี coverFile ให้เคลียร์ + revoke ของเดิม
     if (!coverFile) {
       if (coverPreviewRef.current) {
-        try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+        try {
+          URL.revokeObjectURL(coverPreviewRef.current);
+        } catch {}
         coverPreviewRef.current = "";
       }
       setCoverPreview("");
       return;
     }
 
-    // revoke ของเดิมก่อนสร้างใหม่ (กัน leak)
     if (coverPreviewRef.current) {
-      try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+      try {
+        URL.revokeObjectURL(coverPreviewRef.current);
+      } catch {}
       coverPreviewRef.current = "";
     }
 
     const url = URL.createObjectURL(coverFile);
     coverPreviewRef.current = url;
     setCoverPreview(url);
-
-    // ❌ อย่าคืน cleanup ที่ revoke ตอน unmount
   }, [coverFile]);
 
-  // ✅ preview screenshots (from screens) — IMPORTANT FIX: ไม่ revoke ตอน unmount
+  // ✅ preview screenshots
   useEffect(() => {
-    // ถ้าไม่มี screens ให้เคลียร์ + revoke ของเดิม
     if (!screens.length) {
       if (screenPreviewRefs.current?.length) {
         screenPreviewRefs.current.forEach((u) => {
-          try { URL.revokeObjectURL(u); } catch {}
+          try {
+            URL.revokeObjectURL(u);
+          } catch {}
         });
       }
       screenPreviewRefs.current = [];
@@ -174,18 +189,17 @@ export default function UploadGame() {
       return;
     }
 
-    // revoke ของเดิมก่อนสร้างใหม่ (กัน leak)
     if (screenPreviewRefs.current?.length) {
       screenPreviewRefs.current.forEach((u) => {
-        try { URL.revokeObjectURL(u); } catch {}
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
       });
     }
 
     const urls = screens.map((f) => URL.createObjectURL(f));
     screenPreviewRefs.current = urls;
     setScreenPreviews(urls);
-
-    // ❌ อย่าคืน cleanup ที่ revoke ตอน unmount
   }, [screens]);
 
   const currentCat = useMemo(() => CATEGORIES.find((c) => c.id === category) || CATEGORIES[0], [category]);
@@ -203,7 +217,7 @@ export default function UploadGame() {
   // accept by kind
   const acceptForKind = kind === "html" ? ".html,.htm,.zip" : ".rar";
 
-  // ✅ PREVIEW DRAFT (works before upload)
+  // ✅ PREVIEW DRAFT
   const buildDraft = () => ({
     title: title.trim(),
     slug: slug || "",
@@ -215,7 +229,6 @@ export default function UploadGame() {
     visibility,
     communityMode,
     videoUrl: videoUrl || "",
-    // ✅ NOTE: blob urls ใช้ได้เฉพาะตอน navigate ภายใน session
     coverPreview: coverPreview || "",
     screenPreviews: screenPreviews || [],
     gameFileName: gameFile?.name || "",
@@ -244,7 +257,6 @@ export default function UploadGame() {
       setSlugTouched(false);
     }
 
-    // ✅ preview urls (ถ้าเป็น blob: แล้วกด refresh มักใช้ไม่ได้อยู่แล้ว)
     if (draft.coverPreview) setCoverPreview(draft.coverPreview);
     if (Array.isArray(draft.screenPreviews)) setScreenPreviews(draft.screenPreviews);
 
@@ -252,7 +264,7 @@ export default function UploadGame() {
     setCoverFile(null);
     setScreens([]);
 
-    setMsg((prev) => prev || "Draft restored. Please re-attach files before uploading.");
+    setErrors({ title: "", gameFile: "", cover: "", screens: "" });
   };
 
   // ✅ On mount: load draft from nav state OR sessionStorage
@@ -294,7 +306,8 @@ export default function UploadGame() {
     const draft = buildDraft();
 
     if (!draft.title) {
-      setMsg("Please enter a title before previewing.");
+      setErrors((e) => ({ ...e, title: "Please enter a title before previewing." }));
+      setNotice({ type: "error", text: "Please enter a title before previewing." });
       return;
     }
 
@@ -311,7 +324,7 @@ export default function UploadGame() {
     nav(createdPath);
   };
 
-  // ✅ reset + revoke urls (IMPORTANT)
+  // ✅ reset + revoke urls
   const resetForm = () => {
     setTitle("");
     setSlug("");
@@ -331,22 +344,25 @@ export default function UploadGame() {
     setScreens([]);
     setVideoUrl("");
     setProgress(0);
-    setMsg("");
+    setNotice({ type: "", text: "" });
+    setErrors({ title: "", gameFile: "", cover: "", screens: "" });
     setCreatedPath("");
     setShowSuccess(false);
     setSuccessNote("");
 
-    // ✅ revoke cover preview
     if (coverPreviewRef.current) {
-      try { URL.revokeObjectURL(coverPreviewRef.current); } catch {}
+      try {
+        URL.revokeObjectURL(coverPreviewRef.current);
+      } catch {}
       coverPreviewRef.current = "";
     }
     setCoverPreview("");
 
-    // ✅ revoke screen previews
     if (screenPreviewRefs.current?.length) {
       screenPreviewRefs.current.forEach((u) => {
-        try { URL.revokeObjectURL(u); } catch {}
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
       });
       screenPreviewRefs.current = [];
     }
@@ -364,34 +380,42 @@ export default function UploadGame() {
   /** cover + resize before upload */
   const onCoverChange = async (e) => {
     const file = e.target.files?.[0];
+    setErrors((x) => ({ ...x, cover: "" }));
     if (!file) return setCoverFile(null);
+
     try {
       const resized = await resizeImage(file, 1200, 675, "image/jpeg", 0.9);
       setCoverFile(resized);
+      setNotice({ type: "info", text: "" });
     } catch (err) {
       console.error(err);
       setCoverFile(null);
-      setMsg("Cover image could not be processed. Please try another image.");
+      setErrors((x) => ({ ...x, cover: "Cover image could not be processed. Please try another image." }));
+      setNotice({ type: "error", text: "Cover image could not be processed. Please try another image." });
     }
   };
 
   /** screenshots + resize before upload */
   const onScreensChange = async (e) => {
+    setErrors((x) => ({ ...x, screens: "" }));
     const files = Array.from(e.target.files || []).slice(0, 5);
+    if (!files.length) return setScreens([]);
+
     const resized = [];
     try {
       for (const f of files) resized.push(await resizeImage(f, 1600, 900, "image/jpeg", 0.9));
       setScreens(resized);
+      setNotice({ type: "info", text: "" });
     } catch (err) {
       console.error(err);
       setScreens([]);
-      setMsg("Screenshots could not be processed. Please try different images.");
+      setErrors((x) => ({ ...x, screens: "Screenshots could not be processed. Please try different images." }));
+      setNotice({ type: "error", text: "Screenshots could not be processed. Please try different images." });
     }
   };
 
   /**
    * ✅ ENGLISH success note that matches what the system ACTUALLY saved
-   * - Use created.visibility + created.requestedVisibility from backend response
    */
   const buildSuccessNote = (created, selectedVisibility) => {
     const savedVis = String(created?.visibility || "").toLowerCase();
@@ -422,23 +446,93 @@ export default function UploadGame() {
     return "Upload successful ✅\n" + `Saved visibility: ${savedVis || selected || "unknown"}`;
   };
 
+  const visChoice = useMemo(() => {
+    if (visibility === "review") return "draft";
+    if (visibility === "private") return "restricted";
+    if (visibility === "public") return "public";
+    return "restricted";
+  }, [visibility]);
+
+  const setVisByChoice = (choice) => {
+    if (choice === "draft") return setVisibility("review");
+    if (choice === "public") return setVisibility("public");
+    return setVisibility("private");
+  };
+
+  const resetSlugFromTitle = () => {
+    setSlugTouched(false);
+    setSlug(toSafeSlug(title));
+  };
+
+  const kindLabel =
+    kind === "html"
+      ? "HTML — played in the browser (.html / .zip)"
+      : "Downloadable — files to be downloaded (.rar)";
+
+  // ✅ validate file based on kind and show red UI
+  const handleGameFileChange = (file) => {
+    setErrors((x) => ({ ...x, gameFile: "" }));
+    setNotice({ type: "", text: "" });
+
+    if (!file) {
+      setGameFile(null);
+      return;
+    }
+
+    if (kind === "html" && !isHtmlOk(file.name)) {
+      setGameFile(file); // keep it so user sees name, but mark as error
+      setErrors((x) => ({ ...x, gameFile: "HTML mode supports only .html or .zip files." }));
+      setNotice({ type: "error", text: "Wrong file type. HTML mode supports only .html or .zip files." });
+      return;
+    }
+
+    if (kind === "download" && !isRarOk(file.name)) {
+      setGameFile(file);
+      setErrors((x) => ({ ...x, gameFile: "Downloadable mode supports only .rar files." }));
+      setNotice({ type: "error", text: "Wrong file type. Downloadable mode supports only .rar files." });
+      return;
+    }
+
+    setGameFile(file);
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
-    setMsg("");
     if (busy) return;
 
-    if (!title.trim()) return setMsg("Please enter a game title.");
-    if (!gameFile) return setMsg("Please attach your game file.");
+    // clear previous
+    setNotice({ type: "", text: "" });
+    setErrors((x) => ({ ...x, title: "", gameFile: "" }));
 
-    if (kind === "html" && !/\.(html?|zip)$/i.test(gameFile.name)) {
-      return setMsg("HTML mode supports only .html or .zip files.");
+    let ok = true;
+
+    if (!title.trim()) {
+      ok = false;
+      setErrors((x) => ({ ...x, title: "Please enter a game title." }));
     }
-    if (kind === "download" && !/\.rar$/i.test(gameFile.name)) {
-      return setMsg("Downloadable mode supports only .rar files.");
+
+    if (!gameFile) {
+      ok = false;
+      setErrors((x) => ({ ...x, gameFile: "Please attach your game file." }));
+    } else {
+      if (kind === "html" && !isHtmlOk(gameFile.name)) {
+        ok = false;
+        setErrors((x) => ({ ...x, gameFile: "HTML mode supports only .html or .zip files." }));
+      }
+      if (kind === "download" && !isRarOk(gameFile.name)) {
+        ok = false;
+        setErrors((x) => ({ ...x, gameFile: "Downloadable mode supports only .rar files." }));
+      }
+    }
+
+    if (!ok) {
+      setNotice({ type: "error", text: "Please fix the highlighted fields." });
+      return;
     }
 
     setBusy(true);
     setProgress(0);
+    setNotice({ type: "info", text: "Uploading…" });
 
     try {
       const fd = new FormData();
@@ -464,6 +558,7 @@ export default function UploadGame() {
         withCredentials: true,
         headers: { ...authHeader },
         onUploadProgress: (ev) => {
+          // ✅ keep progress bar, but no % text anywhere
           if (ev.total) setProgress(Math.round((ev.loaded * 100) / ev.total));
         },
       });
@@ -480,7 +575,7 @@ export default function UploadGame() {
             "\n\nNote: The system did not return a game id, so “View page” cannot be opened. (Check Console logs.)"
         );
         setShowSuccess(true);
-        setMsg("Uploaded, but cannot open “View page” (missing id).");
+        setNotice({ type: "success", text: "Uploaded, but cannot open “View page” (missing id)." });
         return;
       }
 
@@ -490,7 +585,7 @@ export default function UploadGame() {
       setSuccessNote(buildSuccessNote(created, visibility));
       setShowSuccess(true);
 
-      setMsg("Uploaded successfully! 🎉");
+      setNotice({ type: "success", text: "Upload complete ✅" });
 
       try {
         sessionStorage.removeItem(DRAFT_KEY);
@@ -502,38 +597,15 @@ export default function UploadGame() {
     } catch (err) {
       const code = err?.response?.status;
       if (code === 401) {
-        setMsg("You are not logged in (Unauthorized). Please sign in first.");
+        setNotice({ type: "error", text: "You are not logged in (Unauthorized). Please sign in first." });
       } else {
-        setMsg(err?.response?.data?.message || err.message || "Upload failed.");
+        setNotice({ type: "error", text: err?.response?.data?.message || err.message || "Upload failed." });
       }
     } finally {
       setBusy(false);
       setTimeout(() => setProgress(0), 800);
     }
   };
-
-  const visChoice = useMemo(() => {
-    if (visibility === "review") return "draft";
-    if (visibility === "private") return "restricted";
-    if (visibility === "public") return "public";
-    return "restricted";
-  }, [visibility]);
-
-  const setVisByChoice = (choice) => {
-    if (choice === "draft") return setVisibility("review");
-    if (choice === "public") return setVisibility("public");
-    return setVisibility("private");
-  };
-
-  const resetSlugFromTitle = () => {
-    setSlugTouched(false);
-    setSlug(toSafeSlug(title));
-  };
-
-  const kindLabel =
-    kind === "html"
-      ? "HTML — played in the browser (.html / .zip)"
-      : "Downloadable — files to be downloaded (.rar)";
 
   return (
     <div className="container section">
@@ -554,13 +626,9 @@ export default function UploadGame() {
               <pre className="modal-note">{successNote}</pre>
 
               {createdPath ? (
-                <div className="modal-hint muted">
-                  You can now click <b>View page</b> to open your game page.
-                </div>
+                <div className="modal-hint muted">You can now click <b>View page</b> to open your game page.</div>
               ) : (
-                <div className="modal-hint muted">
-                  Tip: You can use <b>Preview</b> anytime to see the draft before uploading.
-                </div>
+                <div className="modal-hint muted">Tip: You can use <b>Preview</b> anytime to see the draft before uploading.</div>
               )}
             </div>
 
@@ -590,9 +658,7 @@ export default function UploadGame() {
         <div className="itch-top">
           <div>
             <h1 className="itch-title">Create a new project</h1>
-            <div className="itch-sub">
-              Set up your game page: title, cover, files, screenshots, trailer, tags, and details.
-            </div>
+            <div className="itch-sub">Set up your game page: title, cover, files, screenshots, trailer, tags, and details.</div>
           </div>
 
           <div className="itch-meta">
@@ -606,22 +672,24 @@ export default function UploadGame() {
           {/* LEFT */}
           <div className="itch-col">
             {/* Basics */}
-            <section className="box">
+            <section className="box box-tight">
               <div className="box-head">
                 <div className="box-title">Make sure everyone can find your page</div>
-                <div className="box-desc muted">
-                  Use a clear title and tagline, then choose the right genre and tags to improve search visibility.
-                </div>
+                <div className="box-desc muted">Use a clear title and tagline, then choose the right Category and tags to improve search visibility.</div>
               </div>
 
               <div className="field">
                 <label className="label">Title</label>
                 <input
-                  className="input"
+                  className={`input ${errors.title ? "is-error" : ""}`}
                   placeholder="e.g., Banana Clicker"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (errors.title) setErrors((x) => ({ ...x, title: "" }));
+                  }}
                 />
+                {errors.title ? <div className="err-text">{errors.title}</div> : null}
               </div>
 
               <div className="field">
@@ -646,22 +714,17 @@ export default function UploadGame() {
 
               <div className="field">
                 <label className="label">Short description or tagline</label>
-                <input
-                  className="input"
-                  placeholder="A short line that makes people want to click"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                />
+                <input className="input" placeholder="A short line that makes people want to click" value={tagline} onChange={(e) => setTagline(e.target.value)} />
               </div>
 
-              <div className="two">
+              <div className="two two-tight">
                 <div className="field">
                   <label className="label">Kind of project</label>
 
                   <div className="kind-select">
                     <button
                       type="button"
-                      className="kind-trigger"
+                      className="kind-trigger kind-tight"
                       onClick={() => setKindOpen((v) => !v)}
                       aria-haspopup="listbox"
                       aria-expanded={kindOpen ? "true" : "false"}
@@ -681,6 +744,8 @@ export default function UploadGame() {
                           onClick={() => {
                             setKind("download");
                             setKindOpen(false);
+                            // re-validate existing file when switching kind
+                            if (gameFile) handleGameFileChange(gameFile);
                           }}
                         >
                           Downloadable — files to be downloaded (.rar)
@@ -693,6 +758,7 @@ export default function UploadGame() {
                           onClick={() => {
                             setKind("html");
                             setKindOpen(false);
+                            if (gameFile) handleGameFileChange(gameFile);
                           }}
                         >
                           HTML — played in the browser (.html / .zip)
@@ -703,11 +769,11 @@ export default function UploadGame() {
                 </div>
 
                 <div className="field">
-                  <label className="label">Genre</label>
+                  <label className="label">Category</label>
                   <div className="cat-select">
                     <button
                       type="button"
-                      className="cat-trigger"
+                      className="cat-trigger cat-tight"
                       onClick={() => setCatOpen((v) => !v)}
                       style={{ borderColor: currentCat.color }}
                     >
@@ -787,36 +853,39 @@ export default function UploadGame() {
               </div>
 
               <div className="field">
-                <div className="upload-row">
-                  <label className="btn btn-primary" htmlFor="gamefile">
-                    Upload files
-                  </label>
-                  <input
-                    id="gamefile"
-                    ref={fileInputRef}
-                    type="file"
-                    accept={acceptForKind}
-                    onChange={(e) => setGameFile(e.target.files?.[0] || null)}
-                    style={{ display: "none" }}
-                  />
+                <div className={`upload-card ${errors.gameFile ? "is-error" : ""}`}>
+                  <div className="upload-row">
+                    <label className="btn btn-primary" htmlFor="gamefile">
+                      Upload files
+                    </label>
+                    <input
+                      id="gamefile"
+                      ref={fileInputRef}
+                      type="file"
+                      accept={acceptForKind}
+                      onChange={(e) => handleGameFileChange(e.target.files?.[0] || null)}
+                      style={{ display: "none" }}
+                    />
 
-                  <div className="help muted">
-                    {kind === "html"
-                      ? "Supported: .html or .zip (recommended: zip contains index.html)"
-                      : "Supported: .rar for download"}
+                    <div className="help muted">
+                      {kind === "html" ? "Supported: .html or .zip (recommended: zip contains index.html)" : "Supported: .rar for download"}
+                    </div>
                   </div>
+
+                  {gameFile && (
+                    <div className="file-line">
+                      <span>📁 {gameFile.name}</span>
+                      <span className="muted">({(gameFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                    </div>
+                  )}
+
+                  {errors.gameFile ? <div className="err-text">{errors.gameFile}</div> : null}
                 </div>
-
-                {gameFile && (
-                  <div className="file-line">
-                    <span>📁 {gameFile.name}</span>
-                    <span className="muted">({(gameFile.size / 1024 / 1024).toFixed(1)} MB)</span>
-                  </div>
-                )}
               </div>
 
+              {/* progress bar stays, but we never show % text */}
               {progress > 0 && (
-                <div className="progress">
+                <div className="progress" aria-label="upload progress">
                   <div className="bar" style={{ width: `${progress}%` }} />
                 </div>
               )}
@@ -829,13 +898,7 @@ export default function UploadGame() {
                 <div className="box-desc muted">Write what players need: how to play, features, credits, and version notes.</div>
               </div>
 
-              <textarea
-                className="textarea"
-                rows={10}
-                placeholder="Write your game description…"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
+              <textarea className="textarea" rows={10} placeholder="Write your game description…" value={description} onChange={(e) => setDescription(e.target.value)} />
             </section>
 
             {/* Community */}
@@ -851,12 +914,7 @@ export default function UploadGame() {
                   <span>Disabled</span>
                 </label>
                 <label className="radio">
-                  <input
-                    type="radio"
-                    name="community"
-                    checked={communityMode === "comments"}
-                    onChange={() => setCommunityMode("comments")}
-                  />
+                  <input type="radio" name="community" checked={communityMode === "comments"} onChange={() => setCommunityMode("comments")} />
                   <span>Comments — Add a comment thread to the page</span>
                 </label>
               </div>
@@ -882,8 +940,8 @@ export default function UploadGame() {
               </div>
             </section>
 
-            {/* Bottom actions */}
-            {msg && <div className="banner">{msg}</div>}
+            {/* ✅ Notice banner (red on errors) */}
+            {notice?.text ? <div className={`banner ${notice.type === "error" ? "banner-err" : notice.type === "success" ? "banner-ok" : ""}`}>{notice.text}</div> : null}
 
             <div className="actions">
               <button type="button" className="btn" onClick={resetForm} disabled={busy}>
@@ -897,7 +955,7 @@ export default function UploadGame() {
               <button type="submit" className="btn btn-primary" disabled={busy}>
                 {busy ? (
                   <>
-                    <span className="spinner" /> Uploading…{progress > 0 ? ` ${progress}%` : ""}
+                    <span className="spinner" /> Uploading…
                   </>
                 ) : (
                   <>Upload</>
@@ -914,7 +972,7 @@ export default function UploadGame() {
                 <div className="box-desc muted">Recommended 16:9 (1200×675). A good cover increases clicks.</div>
               </div>
 
-              <div className="cover-drop">
+              <div className={`cover-drop ${errors.cover ? "is-error" : ""}`}>
                 <div className="cover-inner">
                   {coverPreview ? <img src={coverPreview} alt="cover" /> : <div className="cover-empty muted">No cover uploaded</div>}
                 </div>
@@ -930,6 +988,8 @@ export default function UploadGame() {
                   onChange={onCoverChange}
                   style={{ display: "none" }}
                 />
+
+                {errors.cover ? <div className="err-text">{errors.cover}</div> : null}
               </div>
 
               <div className="help muted">This image is used for link previews and game cards on the Home page.</div>
@@ -941,14 +1001,7 @@ export default function UploadGame() {
                 <div className="box-desc muted">Paste a YouTube / Vimeo link.</div>
               </div>
 
-              <input
-                className="input"
-                type="url"
-                placeholder="https://www.youtube.com/watch?v=..."
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-              />
-
+              <input className="input" type="url" placeholder="https://www.youtube.com/watch?v=..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
               <div className="help muted">The video will be shown on your game detail page.</div>
             </section>
 
@@ -958,18 +1011,21 @@ export default function UploadGame() {
                 <div className="box-desc muted">Recommended: 3–5 images (max 5) to help people decide quickly.</div>
               </div>
 
-              <label className="btn btn-primary" htmlFor="screenfile">
-                Add screenshots
-              </label>
-              <input
-                id="screenfile"
-                ref={screensInputRef}
-                type="file"
-                multiple
-                accept="image/png,image/jpeg,image/webp"
-                onChange={onScreensChange}
-                style={{ display: "none" }}
-              />
+              <div className={`${errors.screens ? "is-error-block" : ""}`}>
+                <label className="btn btn-primary" htmlFor="screenfile">
+                  Add screenshots
+                </label>
+                <input
+                  id="screenfile"
+                  ref={screensInputRef}
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={onScreensChange}
+                  style={{ display: "none" }}
+                />
+                {errors.screens ? <div className="err-text">{errors.screens}</div> : null}
+              </div>
 
               {!!screenPreviews.length && (
                 <div className="screens">
@@ -999,16 +1055,22 @@ function StyleLocal() {
 .itch-sub{ margin-top:6px; color:var(--muted); max-width:70ch; }
 .itch-meta{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 
-.pill-small{
-  font-size:12px; padding:6px 10px; border-radius:999px;
-  border:1px solid var(--stroke); background:rgba(255,255,255,.04); color:#dbe7f3;
-}
-
 /* banner */
 .banner{
   padding:10px 12px; border-radius:10px;
-  border:1px solid var(--stroke); background:rgba(255,255,255,.04);
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04);
   color:#eaf4ff;
+}
+.banner-err{
+  border-color: rgba(255, 70, 70, .55);
+  background: rgba(255, 70, 70, .10);
+  color: #ffd6d6;
+}
+.banner-ok{
+  border-color: rgba(72, 255, 170, .35);
+  background: rgba(72, 255, 170, .08);
+  color: #d9ffe9;
 }
 
 /* ✅ modal */
@@ -1082,6 +1144,7 @@ function StyleLocal() {
   padding:14px;
   box-shadow: var(--shadow);
 }
+.box-tight{ padding:12px; } /* ✅ reduce “หมวด” block height a bit */
 .itch-col{ display:grid; gap:12px; }
 .itch-side{ display:grid; gap:12px; position:sticky; top:14px; }
 @media (max-width: 980px){ .itch-side{ position:static; } }
@@ -1096,6 +1159,7 @@ function StyleLocal() {
 .muted{ color:var(--muted); }
 
 .two{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+.two-tight{ gap:8px; } /* ✅ tighter row */
 @media (max-width: 680px){ .two{ grid-template-columns:1fr; } }
 
 /* inputs */
@@ -1116,8 +1180,36 @@ function StyleLocal() {
 .input-clean{ background: rgba(255,255,255,.02); }
 .textarea{ resize:vertical; min-height:160px; }
 
+.input.is-error{
+  border-color: rgba(255, 70, 70, .7) !important;
+  box-shadow: 0 0 0 4px rgba(255, 70, 70, .12) !important;
+}
+.err-text{
+  margin-top:8px;
+  font-size:12px;
+  color:#ffb4b4;
+}
+
 .url-row{ display:flex; align-items:center; gap:8px; }
 .url-prefix{ font-size:13px; white-space:nowrap; opacity:.9; }
+
+/* dropdown triggers (reduce height so category/kind take less space) */
+/* ✅ Kind เล็กกว่า */
+.kind-tight{
+  height:40px !important;
+  padding:0 10px !important;
+  border-width:1px !important;
+  font-size:12.5px !important;
+}
+
+/* ✅ Category ใหญ่กว่า (หรือปรับตามใจ) */
+.cat-tight{
+  height:40px !important;
+  padding:0 12px !important;
+  border-width:2px !important;
+  font-size:13.5px !important;
+}
+
 
 /* Kind dropdown */
 .kind-select{ position:relative; }
@@ -1139,7 +1231,7 @@ function StyleLocal() {
 .kind-trigger svg{ opacity:.85; transition:.2s; }
 .kind-trigger svg.rot{ transform:rotate(180deg); }
 .kind-menu{
-  position:absolute; top:48px; left:0; right:0; z-index:30;
+  position:absolute; top:44px; left:0; right:0; z-index:30;
   border-radius:12px;
   border:1px solid var(--stroke);
   background:#0d1014;
@@ -1147,9 +1239,10 @@ function StyleLocal() {
   overflow:hidden;
 }
 .kind-item{
-  padding:10px 12px;
+  padding:9px 10px;
   cursor:pointer;
   color:var(--text);
+  font-size:13px;
 }
 .kind-item:hover{ background: rgba(255,255,255,.06); }
 .kind-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
@@ -1168,26 +1261,28 @@ function StyleLocal() {
   cursor:pointer;
   transition:.15s ease;
 }
-.cat-left{ display:flex; align-items:center; gap:8px; }
+.cat-left{ display:flex; align-items:center; gap:8px; min-width:0; }
 .cat-dot{ width:10px; height:10px; border-radius:999px; box-shadow:0 0 0 2px rgba(255,255,255,.12) inset; }
 .cat-emoji{ opacity:.95; }
+.cat-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cat-trigger:hover{ border-color:#6bd9ff; }
 .cat-trigger svg{ opacity:.85; transition:.2s; }
 .cat-trigger svg.rot{ transform:rotate(180deg); }
 
 .cat-menu{
-  position:absolute; top:48px; left:0; right:0; z-index:30;
+  position:absolute; top:44px; left:0; right:0; z-index:30;
   border-radius:12px;
   border:1px solid var(--stroke);
   background:#0d1014;
   box-shadow: var(--shadow);
-  max-height:340px;
+  max-height:320px;
   overflow:auto;
 }
 .cat-item{
   display:flex; align-items:center; gap:10px;
-  padding:10px 12px;
+  padding:9px 10px;
   cursor:pointer;
+  font-size:13px;
 }
 .cat-item:hover{ background: rgba(255,255,255,.06); }
 .cat-item.is-active{ background: rgba(72,208,255,.10); border-left:3px solid #59e0ff; }
@@ -1221,9 +1316,25 @@ function StyleLocal() {
 }
 .radio input{ margin-top:3px; }
 
-/* upload row */
+/* upload row + error card */
 .upload-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .file-line{ margin-top:8px; display:flex; gap:8px; align-items:center; }
+.upload-card{
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  padding:10px;
+  background: rgba(255,255,255,.03);
+}
+.upload-card.is-error{
+  border-color: rgba(255, 70, 70, .55);
+  background: rgba(255, 70, 70, .06);
+}
+.is-error-block{
+  border:1px solid rgba(255, 70, 70, .55);
+  background: rgba(255, 70, 70, .06);
+  border-radius:12px;
+  padding:10px;
+}
 
 /* buttons */
 .btn{
@@ -1283,6 +1394,10 @@ function StyleLocal() {
   border-radius:12px;
   padding:10px;
   background: rgba(255,255,255,.03);
+}
+.cover-drop.is-error{
+  border-color: rgba(255, 70, 70, .55);
+  background: rgba(255, 70, 70, .06);
 }
 .cover-inner{
   position:relative;

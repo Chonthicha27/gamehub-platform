@@ -1,6 +1,6 @@
 /* frontend/src/pages/admin/admin.css */
 /* =======================================================================
-   Admin UI – Clean Admin Console (dark) (clean history + centered actions)
+   Admin UI – Clean Admin Console (dark) – tidy tables + better responsive
    ======================================================================= */
 
 :root {
@@ -29,6 +29,7 @@ body {
   background: var(--bg);
 }
 
+/* ---------- Page wrap ---------- */
 .admin-wrap {
   width: min(1600px, 96vw);
   margin: 26px auto 96px;
@@ -84,12 +85,15 @@ body {
   gap: 14px;
 }
 
+/* ✅ Tabs: keep tidy, scroll when needed */
 .tabs {
   display: flex;
   gap: 10px;
   flex-wrap: nowrap;
   overflow: auto;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
 }
 
 .tabs::-webkit-scrollbar {
@@ -118,6 +122,7 @@ body {
   box-shadow: var(--shadow-2);
   font-size: 13px;
   line-height: 1;
+  scroll-snap-align: start;
 }
 
 .tab:hover {
@@ -164,6 +169,7 @@ body {
   min-width: 0;
 }
 
+/* ✅ Search stays aligned, never squish weird */
 .search-wrap {
   width: min(520px, 45vw);
   min-width: 240px;
@@ -191,7 +197,7 @@ body {
   box-shadow: 0 0 0 3px rgba(94, 167, 255, 0.18);
 }
 
-/* refresh in a separate action group (not like a search button) */
+/* refresh in a separate action group */
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
@@ -274,13 +280,27 @@ body {
   border-radius: var(--radius);
 }
 
+/* ✅ IMPORTANT: make table-fixed actually fixed */
+.table-fixed {
+  table-layout: fixed !important;
+}
+
+/* ✅ Base table */
 .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  table-layout: auto;
   font-size: 14px;
+  table-layout: auto;
+  min-width: 920px;
 }
+
+/* ✅ each table can override min-width */
+.users-table { min-width: 980px; }
+.games-table { min-width: 980px; }
+.pending-table { min-width: 920px; }
+.comments-table { min-width: 1120px; }
+.monthly-table { min-width: 980px; }
 
 .table thead th {
   position: sticky;
@@ -295,6 +315,7 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   text-transform: uppercase;
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .table tbody td {
@@ -316,37 +337,19 @@ body {
 }
 
 /* columns */
-.col-user {
-  width: 26%;
-}
-.col-email {
-  width: 36%;
-}
-.col-role {
-  width: 10%;
-}
-.col-status {
-  width: 12%;
-}
-.col-actions {
-  width: 10%;
-}
+.col-user { width: 26%; }
+.col-email { width: 36%; }
+.col-role { width: 10%; }
+.col-status { width: 12%; }
+.col-actions { width: 10%; }
 
-.col-title {
-  width: 30%;
-}
-.col-uploader {
-  width: 16%;
-}
-.col-category {
-  width: 14%;
-}
-.col-created {
-  width: 18%;
-}
+.col-title { width: 30%; }
+.col-uploader { width: 16%; }
+.col-category { width: 14%; }
+.col-created { width: 18%; }
 
 .col-select {
-  width: 40px;
+  width: 44px;
   text-align: center;
 }
 
@@ -447,25 +450,12 @@ body {
   letter-spacing: 0.1px;
 }
 
-.meta-dim {
-  color: #cfe2ff;
-  opacity: 0.85;
-}
-.meta-ok {
-  color: #22c55e;
-}
-.meta-warn {
-  color: #f59e0b;
-}
-.meta-bad {
-  color: #ef4444;
-}
-.meta-link {
-  color: #38bdf8;
-}
-.meta-cat {
-  color: #f59e0b;
-}
+.meta-dim { color: #cfe2ff; opacity: 0.85; }
+.meta-ok { color: #22c55e; }
+.meta-warn { color: #f59e0b; }
+.meta-bad { color: #ef4444; }
+.meta-link { color: #38bdf8; }
+.meta-cat { color: #f59e0b; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -612,9 +602,8 @@ a.btn {
 }
 
 /* =======================================================================
-   ✅ Actions Menu (⋯) – centered per row (fix screenshot #3)
+   ✅ Actions Menu (⋯) – centered per row
    ======================================================================= */
-
 .actions-head {
   text-align: center !important;
 }
@@ -629,7 +618,6 @@ a.btn {
   align-items: center;
 }
 
-/* keep menu position right-aligned to the button, but button is centered */
 .menu-root {
   position: relative;
   display: inline-block;
@@ -681,13 +669,8 @@ a.btn {
   backdrop-filter: blur(10px);
 }
 
-.align-right .menu {
-  right: 0;
-}
-
-.align-left .menu {
-  left: 0;
-}
+.align-right .menu { right: 0; }
+.align-left .menu { left: 0; }
 
 .menu-title {
   font-size: 12px;
@@ -747,6 +730,223 @@ a.btn {
   background: transparent;
 }
 
+/* =======================================================================
+   ✅ Reported Comments – FIX: layout + eye icon not overlay + nicer text
+   ======================================================================= */
+
+.comments-table td,
+.comments-table .muted,
+.comments-table .tiny,
+.comments-table .mono {
+  font-weight: 400;
+}
+
+.comments-table .strong {
+  font-weight: 650;
+}
+
+/* Reports Detail cell layout: ซ้ายข้อความ + ขวาปุ่ม (ระยะคงที่) */
+.reports-cell{
+  display: grid;
+  grid-template-columns: 1fr 38px; /* ข้อความ | ปุ่มตา */
+  column-gap: 12px;               /* ระยะห่างระหว่างข้อความกับปุ่ม */
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.reports-left{
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+/* ปุ่มตา: อยู่คอลัมน์ขวาชัดๆ ไม่ลอย */
+.eye-only-btn{
+  width: 34px;
+  height: 34px;
+  justify-self: end;   /* ✅ ชิดขวาของช่อง Reports Detail */
+  margin: 0;
+}
+.comments-table td:nth-child(4){
+  text-align: left;
+}
+
+
+.report-who {
+  font-weight: 650;
+  color: #e7efff;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-why {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #ffd48a;
+  font-weight: 650;
+  font-size: 11px;
+}
+
+.report-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.95;
+}
+
+.report-more {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.reports-action {
+  flex: 0 0 auto;              /* ✅ never overlap */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Eye button: now has its own pill background (ไม่ทับข้อความแล้ว) */
+.eye-only-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #cfe2ff;
+  opacity: 0.95;
+  transition: 0.15s ease;
+  box-shadow: var(--shadow-2);
+}
+
+.eye-only-btn:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  background: rgba(56, 189, 248, 0.10);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.eye-only-btn.is-open {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.eye-only-btn:active {
+  transform: translateY(0);
+}
+
+.eye-only-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(94, 167, 255, 0.25);
+}
+
+/* Expanded Report Details (clean + consistent typography) */
+.report-details {
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .10);
+}
+
+.report-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.report-details-title {
+  font-weight: 750;
+  font-size: 13px;
+  color: #eaf2ff;
+}
+
+.report-details-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.report-card {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  padding: 10px 12px;
+}
+
+.report-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-card-who {
+  min-width: 0;
+}
+
+.report-who-strong {
+  font-weight: 750;
+  font-size: 13px;
+  color: #eaf2ff;
+}
+
+.report-card-time {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.report-card-body {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.report-k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.report-v {
+  font-size: 13px;
+  color: #eaf2ff;
+  min-width: 0;
+}
+
+.report-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #ffd48a;
+  font-weight: 750;
+  font-size: 12px;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1140px) {
   .search-wrap {
@@ -774,11 +974,12 @@ a.btn {
     justify-content: flex-end;
   }
 
+  /* users table: hide email on small */
   .col-email {
     display: none;
   }
   .col-user {
-    width: 50%;
+    width: 55%;
   }
   .col-actions {
     width: 12%;
@@ -787,20 +988,317 @@ a.btn {
   .select-input {
     min-width: 220px;
   }
+
+  /* report row layout tighter */
+  .report-row {
+    grid-template-columns: 100px 1fr;
+  }
 }
 
+/* ✅ Mobile: tighten spacing + reduce table min-width to avoid “แถบดำโล่ง” */
 @media (max-width: 640px) {
+  .admin-wrap {
+    padding: 0 14px 70px;
+  }
+
   .admin-title {
     font-size: 28px;
   }
+
+  .admin-toolbar {
+    padding: 10px 10px;
+  }
+
+  .tab {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .search {
+    padding: 10px 12px;
+  }
+
+  .table thead th {
+    padding: 11px 12px;
+  }
+  .table tbody td {
+    padding: 12px 12px;
+  }
+
+  .users-table { min-width: 720px; }
+  .games-table { min-width: 760px; }
+  .pending-table { min-width: 740px; }
+  .comments-table { min-width: 980px; }
+  .monthly-table { min-width: 820px; }
+
   .menu {
     min-width: 200px;
   }
 }
-.table:has(thead th:nth-child(7)) { table-layout: auto; }
-.table:has(thead th:nth-child(7)) thead th:nth-child(5),
-.table:has(thead th:nth-child(7)) tbody td:nth-child(5) { width: 110px; }
-.table:has(thead th:nth-child(7)) thead th:nth-child(6),
-.table:has(thead th:nth-child(7)) tbody td:nth-child(6) { width: 70px; }
-.table:has(thead th:nth-child(7)) thead th:nth-child(7),
-.table:has(thead th:nth-child(7)) tbody td:nth-child(7) { width: 90px; }
+/* =======================================================================
+   ✅ FIX: Comments table - Center STATUS between Reports Detail & Count
+   (แปะท้ายไฟล์เพื่อ override ของเดิม)
+   ======================================================================= */
+
+/* บังคับคอลัมน์ STATUS / COUNT / ACTIONS ให้ center */
+.comments-table thead th:nth-child(5),
+.comments-table tbody td:nth-child(5),
+.comments-table thead th:nth-child(6),
+.comments-table tbody td:nth-child(6),
+.comments-table thead th:nth-child(7),
+.comments-table tbody td:nth-child(7){
+  text-align: center !important;
+}
+
+/* ลด padding คอลัมน์ท้าย ๆ ให้ไม่ดูโล่ง */
+.comments-table thead th:nth-child(5),
+.comments-table tbody td:nth-child(5),
+.comments-table thead th:nth-child(6),
+.comments-table tbody td:nth-child(6),
+.comments-table thead th:nth-child(7),
+.comments-table tbody td:nth-child(7){
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+/* กัน Reports Detail ไม่ดู “ดันขอบ” เกิน */
+.comments-table thead th:nth-child(4),
+.comments-table tbody td:nth-child(4){
+  padding-right: 10px !important;
+}
+/* ===============================
+   Report Details – Horizontal + no extra box
+   =============================== */
+
+/* กล่องใหญ่ (อันนี้โอเคไว้ได้ แต่ลดความหนาแน่น) */
+.report-details{
+  padding: 12px 12px !important;
+  border-radius: 14px !important;
+}
+
+/* ❌ เอากล่อง report-card เดิมออกไปเลย ถ้ามียังอยู่ ให้ทับให้โปร่ง */
+.report-card{
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* ✅ แต่ละ report เป็นแถวแนวนอน */
+.report-item{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 14px;
+  padding: 10px 8px;
+  border-radius: 12px;
+}
+
+/* ถ้ามีหลายรายการ ให้มีเส้นคั่นแบบบางๆ แทนกล่อง */
+.report-item + .report-item{
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.report-left{ min-width:0; flex: 1 1 auto; }
+.report-right{ flex: 0 0 auto; }
+
+.report-who-line{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  min-width:0;
+}
+
+.report-who-name{
+  font-weight: 800;
+  font-size: 13px;
+  color:#eaf2ff;
+  min-width: 0;
+}
+
+.report-dot{
+  opacity:.6;
+  font-size: 12px;
+}
+
+.report-who-email{
+  font-size: 12px;
+  color: rgba(159,176,212,.95);
+  min-width:0;
+}
+
+.report-time{
+  font-size: 12px;
+  color: rgba(159,176,212,.9);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+/* ✅ Reason + Description เรียงแนวนอน */
+.report-fields{
+  display:flex;
+  align-items:center;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap; /* จอแคบให้ตกบรรทัดเอง */
+}
+
+.report-field{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.report-k{
+  font-size: 12px;
+  color: rgba(159,176,212,.95);
+  width: 82px;       /* ล็อค label ให้เท่ากัน */
+  flex: 0 0 auto;
+}
+
+.report-desc-inline{
+  font-size: 13px;
+  color:#eaf2ff;
+  min-width:0;
+  max-width: 520px; /* กันยาวเกินไป */
+}
+
+.report-dash{
+  color: rgba(159,176,212,.95);
+}
+
+/* มือถือ: ให้เวลาลงบรรทัด ไม่ยัดขวา */
+@media (max-width: 640px){
+  .report-item{ flex-direction: column; gap: 8px; }
+  .report-time{ padding-top: 0; }
+  .report-desc-inline{ max-width: 100%; }
+}
+/* ===== Report Details: ONE-LINE horizontal ===== */
+
+.report-rowline{
+  display:flex;
+  align-items:center;           /* ✅ ให้อยู่บรรทัดเดียว */
+  justify-content:space-between;
+  gap: 14px;
+  padding: 10px 8px;
+}
+
+.report-inline{
+  display:flex;
+  align-items:center;
+  gap: 16px;
+  min-width:0;
+  flex: 1 1 auto;
+}
+
+.report-who-line{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  min-width: 220px;            /* ✅ กันหายจนสั้นไป */
+  max-width: 420px;
+  flex: 0 1 420px;
+}
+
+.report-field{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.report-desc-field{
+  flex: 1 1 auto;              /* ✅ ให้ Description กินพื้นที่ที่เหลือ */
+  min-width: 220px;
+}
+
+.report-k{
+  width: auto !important;      /* ✅ ไม่ต้องล็อค 82px */
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: rgba(159,176,212,.95);
+}
+
+.report-desc-inline{
+  max-width: 100% !important;  /* ✅ ให้ยืดได้ตามพื้นที่ */
+}
+
+.report-right{
+  flex: 0 0 auto;
+}
+
+.report-time{
+  white-space: nowrap;
+}
+
+/* มือถือค่อยให้ตกบรรทัด */
+@media (max-width: 640px){
+  .report-rowline{ flex-direction: column; align-items:flex-start; }
+  .report-inline{ flex-wrap: wrap; }
+  .report-who-line{ max-width: 100%; min-width: 0; }
+}
+/* ✅ Remove yellow pill (Reason) */
+.report-pill{
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  color: #eaf2ff !important;   /* จะเอาเป็นสีเดียวกับ text */
+  font-weight: 650 !important;
+}
+/* =========================================================
+   ✅ FIX Typography in ALL tables: consistent weight
+   - Main text in table body: 520
+   - Secondary text (tiny/muted): 400
+   - Kill random bold from .strong/.meta inside tables
+   ========================================================= */
+
+.table tbody td,
+.table tbody td *{
+  font-weight: 520 !important;     /* ✅ ให้มัน "หนาเท่ากัน" ทุกช่องในแถว */
+}
+
+/* ตัวรองให้บางลงเสมอ */
+.table tbody td .tiny,
+.table tbody td .muted,
+.table tbody td .mono{
+  font-weight: 400 !important;
+}
+
+/* ไม่ให้ .strong ทำให้บางแท็บหนากว่าชาวบ้าน */
+.table tbody td .strong{
+  font-weight: 520 !important;
+  font-size: 14px !important;      /* กันบางแท็บตัวใหญ่เด้ง */
+}
+
+/* meta เคยเป็น 650 เลยหนาไม่เท่ากัน → ทำให้เท่ากัน */
+.table tbody td .meta,
+.table tbody td [class^="meta-"],
+.table tbody td [class*=" meta-"]{
+  font-weight: 520 !important;
+}
+
+/* (ถ้าอยากให้ status/category “เด่นด้วยสี” ไม่ใช่หนา) */
+.table tbody td .meta-ok,
+.table tbody td .meta-warn,
+.table tbody td .meta-bad,
+.table tbody td .meta-cat{
+  font-weight: 520 !important;
+}
+/* ===== Kebab menu: make it narrower ===== */
+.menu{
+  width: 200px !important;
+  min-width: 200px !important;
+  max-width: 200px !important;
+  padding: 6px !important;
+}
+
+/* กันข้อความยาวแล้วไม่ดันกล่องให้กว้าง */
+.menu-item{
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}

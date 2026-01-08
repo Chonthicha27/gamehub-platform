@@ -1,5 +1,6 @@
 // frontend/src/pages/admin/AdminDashboard.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import api from "../../api/axios";
 import "./admin.css";
 
@@ -33,12 +34,40 @@ function yyyyMmToLabel(yyyyMm) {
   }
 }
 
+/* ---------- Text formatting (Title Case) ---------- */
+
+function safeStr(v) {
+  return (v ?? "").toString().trim();
+}
+
+function toTitleCase(input = "") {
+  const s = safeStr(input);
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .replace(/\b([a-z])([a-z0-9']*)\b/g, (_, a, b) => a.toUpperCase() + b);
+}
+
+function prettyEnumLabel(v) {
+  const s = safeStr(v);
+  if (!s) return "-";
+  const spaced = s.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return toTitleCase(spaced) || "-";
+}
+
+function shortId(id) {
+  const s = safeStr(id);
+  if (!s) return "";
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 6)}…${s.slice(-4)}`;
+}
+
 /* ---------- Plain text labels ---------- */
 
 function StatusText({ value }) {
   if (value === "active") return <span className="meta meta-ok">Enabled</span>;
   if (value === "suspended") return <span className="meta meta-bad">Suspended</span>;
-  return <span className="meta meta-dim">{String(value || "-")}</span>;
+  return <span className="meta meta-dim">{prettyEnumLabel(value)}</span>;
 }
 
 function RoleText({ value }) {
@@ -50,18 +79,18 @@ function PublicationStatusText({ value }) {
   if (value === "public") return <span className="meta meta-ok">Published</span>;
   if (value === "review") return <span className="meta meta-warn">Pending Review</span>;
   if (value === "suspended") return <span className="meta meta-bad">Suspended</span>;
-  return <span className="meta meta-dim">{String(value || "-")}</span>;
+  return <span className="meta meta-dim">{prettyEnumLabel(value)}</span>;
 }
 
 function CommentStatusText({ value }) {
   if (value === "visible") return <span className="meta meta-ok">Visible</span>;
   if (value === "hidden") return <span className="meta meta-warn">Hidden</span>;
   if (value === "deleted") return <span className="meta meta-dim">Removed</span>;
-  return <span className="meta meta-dim">{String(value || "-")}</span>;
+  return <span className="meta meta-dim">{prettyEnumLabel(value)}</span>;
 }
 
 function CategoryText({ value }) {
-  return <span className="meta meta-cat">{value || "-"}</span>;
+  return <span className="meta meta-cat">{prettyEnumLabel(value)}</span>;
 }
 
 function ReportsText({ count }) {
@@ -72,17 +101,6 @@ function ReportsText({ count }) {
 
 /* ---------- Reports (who + reason + description) helpers ---------- */
 
-function safeStr(v) {
-  return (v ?? "").toString().trim();
-}
-function shortId(id) {
-  const s = safeStr(id);
-  if (!s) return "";
-  if (s.length <= 10) return s;
-  return `${s.slice(0, 6)}…${s.slice(-4)}`;
-}
-
-/** normalize: รองรับ reports เป็น string (ObjectId) */
 function normalizeReportEntry(r) {
   if (!r) return null;
   if (typeof r === "string") return { userId: r };
@@ -90,7 +108,6 @@ function normalizeReportEntry(r) {
   return null;
 }
 
-/** reporter object อาจมาได้หลายชื่อ */
 function pickReporter(r = {}) {
   if (r && typeof r === "object" && (r.username || r.email || r.displayName)) return r;
 
@@ -109,7 +126,6 @@ function pickReporter(r = {}) {
   return candidate;
 }
 
-/** หา id ของผู้รายงานจากหลาย field */
 function getReporterId(r = {}) {
   const direct =
     r.userId ||
@@ -150,10 +166,9 @@ function reporterLabel(reporter, fallbackId) {
   }
   const fid = safeStr(fallbackId);
   if (fid) return `User ${shortId(fid)}`;
-  return "(unknown)";
+  return "(Unknown)";
 }
 
-/* ✅ map reason ให้ตรงกับ modal ใหม่ */
 function normalizeReasonKey(raw) {
   const s = safeStr(raw).toLowerCase();
   if (!s) return "";
@@ -166,11 +181,11 @@ function normalizeReasonKey(raw) {
 
 function reasonPrettyLabel(key) {
   const k = normalizeReasonKey(key);
-  if (k === "off_topic") return "Off topic";
+  if (k === "off_topic") return "Off Topic";
   if (k === "spam") return "Spam";
   if (k === "offensive") return "Offensive";
   if (k === "other") return "Other";
-  return safeStr(key) || "-";
+  return toTitleCase(safeStr(key)) || "-";
 }
 
 function reportReasonLabel(r = {}) {
@@ -183,7 +198,6 @@ function reportReasonLabel(r = {}) {
   return reasonPrettyLabel(raw);
 }
 
-/* ✅ NEW: ดึง Description / additional info ให้รองรับหลาย field */
 function reportDescriptionLabel(r = {}) {
   const s =
     safeStr(r.description) ||
@@ -216,19 +230,47 @@ function reportsArrayFromComment(c) {
   return arr.map(normalizeReportEntry).filter(Boolean);
 }
 
+/* ---------- Icons ---------- */
+
+function EyeIcon({ size = 16 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "block" }}
+    >
+      <path
+        d="M2.2 12s3.6-7 9.8-7 9.8 7 9.8 7-3.6 7-9.8 7-9.8-7-9.8-7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
 /* ---------- Toolbar ---------- */
 
 function Toolbar({ tab, setTab, search, setSearch, refresh, counts, loading }) {
   const placeholder =
     tab === "users"
-      ? "Search users by username, email, role..."
+      ? "Search Users By Username, Email, Role..."
       : tab === "games"
-      ? "Search games by title, uploader, category..."
+      ? "Search Games By Title, Uploader, Category..."
       : tab === "pending"
-      ? "Search pending submissions..."
+      ? "Search Pending Submissions..."
       : tab === "comments"
-      ? "Search reported comments..."
-      : "Search monthly votes...";
+      ? "Search Reported Comments..."
+      : "Search Monthly Votes...";
 
   const TabBtn = ({ id, label, count }) => (
     <button
@@ -247,7 +289,7 @@ function Toolbar({ tab, setTab, search, setSearch, refresh, counts, loading }) {
   return (
     <div className="admin-toolbar glass">
       <div className="toolbar-row">
-        <div className="tabs" role="tablist" aria-label="Admin sections">
+        <div className="tabs" role="tablist" aria-label="Admin Sections">
           <TabBtn id="users" label="Users" count={counts.users} />
           <TabBtn id="games" label="Games" count={counts.games} />
           <TabBtn id="pending" label="Pending Review" count={counts.pending} />
@@ -265,15 +307,15 @@ function Toolbar({ tab, setTab, search, setSearch, refresh, counts, loading }) {
             />
           </div>
 
-          <div className="toolbar-actions" aria-label="Toolbar actions">
+          <div className="toolbar-actions" aria-label="Toolbar Actions">
             <div className="toolbar-divider" aria-hidden="true" />
             <button
               className={`icon-btn ${loading ? "is-loading" : ""}`}
               onClick={refresh}
               type="button"
-              title={loading ? "Refreshing..." : "Reload data"}
+              title={loading ? "Refreshing..." : "Reload Data"}
               disabled={loading}
-              aria-label="Reload data"
+              aria-label="Reload Data"
             >
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
@@ -347,12 +389,72 @@ function MenuDivider() {
   return <div className="menu-divider" />;
 }
 
-function ActionMenu({ menuKey, openKey, setOpenKey, align = "right", children }) {
+function ActionMenu({ menuKey, openKey, setOpenKey, align = "right", width = 240, children }) {
   const open = openKey === menuKey;
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, w: width });
+
+  const compute = () => {
+    const el = btnRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth || 0;
+    const vh = window.innerHeight || 0;
+
+    const w = Math.min(Math.max(width, 200), 360);
+    let left = align === "left" ? rect.left : rect.right - w;
+    left = Math.max(8, Math.min(left, vw - w - 8));
+
+    const belowTop = rect.bottom + 8;
+    const aboveTop = rect.top - 8;
+
+    const estH = 240;
+    let top = belowTop;
+    if (belowTop + estH > vh - 8) top = Math.max(8, aboveTop - estH);
+
+    setPos({ top, left, w });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    compute();
+
+    const onResize = () => compute();
+    const onScroll = () => compute();
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, width, align, menuKey]);
+
+  const menuEl = open ? (
+    <div
+      className="menu menu-portal"
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        minWidth: pos.w,
+        maxWidth: 360,
+        zIndex: 9999,
+        overflow: "visible",
+        maxHeight: `calc(100vh - 16px)`,
+      }}
+      role="menu"
+    >
+      {children}
+    </div>
+  ) : null;
 
   return (
-    <div className={`menu-root ${align === "left" ? "align-left" : "align-right"}`}>
+    <div className="menu-root">
       <button
+        ref={btnRef}
         type="button"
         className="kebab"
         aria-haspopup="menu"
@@ -365,7 +467,7 @@ function ActionMenu({ menuKey, openKey, setOpenKey, align = "right", children })
         <span className="kebab-dot" />
       </button>
 
-      {open && <div className="menu">{children}</div>}
+      {menuEl ? createPortal(menuEl, document.body) : null}
     </div>
   );
 }
@@ -390,10 +492,8 @@ export default function AdminDashboard() {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [openMenuKey, setOpenMenuKey] = useState(null);
 
-  // report details toggle
   const [openReportKey, setOpenReportKey] = useState(null);
 
-  // ✅ NEW: จำสถานะเดิมก่อน suspend เพื่อ restore กลับได้ถูกต้อง
   const prevGameVisibilityRef = useRef(new Map());
 
   const token = localStorage.getItem("token");
@@ -403,7 +503,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const onDown = (e) => {
-      if (!e.target.closest(".menu-root")) setOpenMenuKey(null);
+      if (!e.target.closest(".menu-root") && !e.target.closest(".menu-portal")) {
+        setOpenMenuKey(null);
+      }
     };
     const onKey = (e) => {
       if (e.key === "Escape") {
@@ -541,9 +643,9 @@ export default function AdminDashboard() {
   };
 
   const suspend = async (id) => {
-    const reason = prompt("Reason (optional)", "violation");
+    const reason = prompt("Reason (Optional)", "Violation");
     if (reason === null) return;
-    const daysStr = prompt("Suspension days (default 7)", "7");
+    const daysStr = prompt("Suspension Days (Default 7)", "7");
     const days = Number(daysStr || 7) || 7;
 
     const r = await api.patch(
@@ -578,8 +680,8 @@ export default function AdminDashboard() {
     if (
       !confirm(
         isPending
-          ? `Reject "${game.title}" and remove it from the system?`
-          : `Delete "${game.title}" from the system?`
+          ? `Reject "${game.title}" And Remove It From The System?`
+          : `Delete "${game.title}" From The System?`
       )
     )
       return;
@@ -588,7 +690,7 @@ export default function AdminDashboard() {
       let url = `/admin/games/${game._id}`;
 
       if (isPending) {
-        const reason = prompt("Reason for rejection (sent to uploader via email)", "");
+        const reason = prompt("Reason For Rejection (Sent To Uploader Via Email)", "");
         if (reason === null) return;
         const encoded = encodeURIComponent(reason);
         url += `?reason=${encoded}`;
@@ -599,20 +701,18 @@ export default function AdminDashboard() {
       setGames((xs) => xs.filter((g) => g._id !== game._id));
       setPendingGames((xs) => xs.filter((g) => g._id !== game._id));
 
-      alert(isPending ? "Rejected and email sent (if available)." : "Deleted and email sent (if available).");
+      alert(isPending ? "Rejected And Email Sent (If Available)." : "Deleted And Email Sent (If Available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
     }
   };
 
-  // ✅ FIX: suspend แล้ว state ต้องอัปเดตให้เห็นทันที และ normalize field ให้ชัวร์
   const suspendGame = async (game) => {
-    const reason = prompt("Reason for suspension (sent to uploader via email)", "");
+    const reason = prompt("Reason For Suspension (Sent To Uploader Via Email)", "");
     if (reason === null) return;
 
     try {
-      // ✅ จำสถานะเดิมไว้เพื่อ restore (ไม่ให้หล่นไป review)
       prevGameVisibilityRef.current.set(String(game._id), game.visibility || "public");
 
       const res = await api.patch(
@@ -623,22 +723,20 @@ export default function AdminDashboard() {
 
       const raw = res.data?.game || res.data || {};
       const nextVisibility = raw.visibility ?? raw.status ?? "suspended";
-
       const updated = { ...game, ...raw, visibility: nextVisibility };
 
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
       setPendingGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
 
-      alert("Game suspended and email sent (if available).");
+      alert("Game Suspended And Email Sent (If Available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
     }
   };
 
-  // ✅ FIX: restore ต้องกลับสถานะเดิม (public/unlisted/private) ไม่ใช่ review
   const unsuspendGame = async (game) => {
-    if (!confirm("Restore this game and make it available again?")) return;
+    if (!confirm("Restore This Game And Make It Available Again?")) return;
 
     try {
       const res = await api.patch(
@@ -648,11 +746,8 @@ export default function AdminDashboard() {
       );
 
       const raw = res.data?.game || res.data || {};
-
       const prev = prevGameVisibilityRef.current.get(String(game._id)) || "public";
       const backendVis = raw.visibility ?? raw.status ?? prev;
-
-      // ถ้า backend เผลอคืน review มา ให้ยึดสถานะเดิม
       const fixedVis = backendVis === "review" ? prev : backendVis;
 
       const updated = { ...game, ...raw, visibility: fixedVis };
@@ -660,7 +755,7 @@ export default function AdminDashboard() {
       setGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
       setPendingGames((xs) => xs.map((g) => (g._id === game._id ? updated : g)));
 
-      alert("Game restored.");
+      alert("Game Restored.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -668,7 +763,7 @@ export default function AdminDashboard() {
   };
 
   const approveGame = async (id) => {
-    if (!confirm("Approve this game and publish it?")) return;
+    if (!confirm("Approve This Game And Publish It?")) return;
     try {
       const res = await api.patch(`/admin/games/${id}/approve`, {}, { withCredentials: true, headers });
       const updated = res.data.game || res.data;
@@ -680,7 +775,7 @@ export default function AdminDashboard() {
         return xs.map((g) => (g._id === id ? updated : g));
       });
 
-      alert("Approved and email sent (if available).");
+      alert("Approved And Email Sent (If Available).");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -690,7 +785,7 @@ export default function AdminDashboard() {
   /* ---------- Comment actions ---------- */
 
   const hideComment = async (comment) => {
-    const reason = prompt("Reason for hiding this comment", "");
+    const reason = prompt("Reason For Hiding This Comment", "");
     if (reason === null) return;
 
     try {
@@ -701,7 +796,7 @@ export default function AdminDashboard() {
       );
 
       await refreshCommentsOnly();
-      alert("Comment hidden.");
+      alert("Comment Hidden.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -709,12 +804,12 @@ export default function AdminDashboard() {
   };
 
   const restoreComment = async (comment) => {
-    if (!confirm("Restore this comment?")) return;
+    if (!confirm("Restore This Comment?")) return;
 
     try {
       await api.patch(`/admin/comments/${comment._id}/restore`, {}, { withCredentials: true, headers });
       await refreshCommentsOnly();
-      alert("Comment restored.");
+      alert("Comment Restored.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -722,11 +817,11 @@ export default function AdminDashboard() {
   };
 
   const deleteComment = async (comment) => {
-    if (!confirm("Permanently delete this comment?")) return;
+    if (!confirm("Permanently Delete This Comment?")) return;
     try {
       await api.delete(`/admin/comments/${comment._id}`, { withCredentials: true, headers });
       setComments((xs) => xs.filter((c) => c._id !== comment._id));
-      alert("Comment deleted.");
+      alert("Comment Deleted.");
     } catch (e) {
       console.error(e);
       alert(e?.response?.data?.message || e.message);
@@ -824,7 +919,7 @@ export default function AdminDashboard() {
     <div className="admin-wrap">
       <div className="admin-header">
         <h1 className="admin-title">Admin</h1>
-        <div className="admin-subtitle">Moderation & management console</div>
+        <div className="admin-subtitle">Moderation & Management Console</div>
       </div>
 
       <Toolbar
@@ -844,10 +939,10 @@ export default function AdminDashboard() {
             <div className="card-title">Users</div>
             {selectedUserIds.length > 0 ? (
               <div className="bulk-indicator">
-                Selected {selectedUserIds.length} user{selectedUserIds.length > 1 ? "s" : ""}
+                Selected {selectedUserIds.length} User{selectedUserIds.length > 1 ? "s" : ""}
               </div>
             ) : (
-              <div className="muted tiny">Tip: Use checkbox to select</div>
+              <div className="muted tiny">Tip: Use Checkbox To Select</div>
             )}
           </div>
 
@@ -867,7 +962,9 @@ export default function AdminDashboard() {
                   <th className="col-email">Email</th>
                   <th className="col-role">Role</th>
                   <th className="col-status">Account Status</th>
-                  <th className="col-actions actions-head">Actions</th>
+                  <th className="col-actions actions-head" style={{ textAlign: "center" }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -894,9 +991,7 @@ export default function AdminDashboard() {
                           <div className="avatar-circle">{initials(u.username || "U")}</div>
                           <div className="cell-texts">
                             <div className="strong">{u.username}</div>
-                            <div className="muted tiny">
-                              Joined {new Date(u.createdAt).toLocaleDateString()}
-                            </div>
+                            <div className="muted tiny">Joined {new Date(u.createdAt).toLocaleDateString()}</div>
                           </div>
                         </div>
                       </td>
@@ -913,9 +1008,9 @@ export default function AdminDashboard() {
                         <StatusText value={u.status} />
                       </td>
 
-                      <td className="actions-cell">
-                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                          <div className="menu-title">User actions</div>
+                      <td className="actions-cell" style={{ textAlign: "center" }}>
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey} width={260}>
+                          <div className="menu-title">User Actions</div>
 
                           <MenuItem
                             onClick={() => {
@@ -924,7 +1019,7 @@ export default function AdminDashboard() {
                             }}
                             disabled={isAdmin}
                           >
-                            Set role: Admin
+                            Set Role: Admin
                           </MenuItem>
 
                           <MenuItem
@@ -934,7 +1029,7 @@ export default function AdminDashboard() {
                             }}
                             disabled={!isAdmin}
                           >
-                            Set role: User
+                            Set Role: User
                           </MenuItem>
 
                           <MenuDivider />
@@ -947,7 +1042,7 @@ export default function AdminDashboard() {
                                 suspend(u._id);
                               }}
                             >
-                              Suspend account
+                              Suspend Account
                             </MenuItem>
                           ) : (
                             <MenuItem
@@ -956,7 +1051,7 @@ export default function AdminDashboard() {
                                 activate(u._id);
                               }}
                             >
-                              Reactivate account
+                              Reactivate Account
                             </MenuItem>
                           )}
                         </ActionMenu>
@@ -968,7 +1063,7 @@ export default function AdminDashboard() {
                 {fUsers.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
-                      No users found
+                      No Users Found
                     </td>
                   </tr>
                 )}
@@ -983,7 +1078,7 @@ export default function AdminDashboard() {
         <div className="card glass">
           <div className="card-head">
             <div className="card-title">Games</div>
-            <div className="muted tiny">Manage published & suspended games</div>
+            <div className="muted tiny">Manage Published & Suspended Games</div>
           </div>
 
           <div className="table-wrap">
@@ -995,7 +1090,9 @@ export default function AdminDashboard() {
                   <th className="col-category">Category</th>
                   <th className="col-status">Publication Status</th>
                   <th className="col-created">Created</th>
-                  <th className="col-actions actions-head">Actions</th>
+                  <th className="col-actions actions-head" style={{ textAlign: "center" }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -1026,9 +1123,9 @@ export default function AdminDashboard() {
 
                       <td className="mono">{new Date(g.createdAt).toLocaleString()}</td>
 
-                      <td className="actions-cell">
-                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                          <div className="menu-title">Game actions</div>
+                      <td className="actions-cell" style={{ textAlign: "center" }}>
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey} width={240}>
+                          <div className="menu-title">Game Actions</div>
 
                           <MenuItem href={`/games/${g._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
                             View
@@ -1076,7 +1173,7 @@ export default function AdminDashboard() {
                 {fGames.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
-                      No games found
+                      No Games Found
                     </td>
                   </tr>
                 )}
@@ -1091,7 +1188,7 @@ export default function AdminDashboard() {
         <div className="card glass">
           <div className="card-head">
             <div className="card-title">Pending Review</div>
-            <div className="muted tiny">Approve or reject submissions</div>
+            <div className="muted tiny">Approve Or Reject Submissions</div>
           </div>
 
           <div className="table-wrap">
@@ -1102,7 +1199,9 @@ export default function AdminDashboard() {
                   <th className="col-uploader">Uploader</th>
                   <th className="col-category">Category</th>
                   <th className="col-created">Submitted</th>
-                  <th className="col-actions actions-head">Actions</th>
+                  <th className="col-actions actions-head" style={{ textAlign: "center" }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
 
@@ -1134,9 +1233,9 @@ export default function AdminDashboard() {
 
                       <td className="mono">{new Date(g.createdAt).toLocaleString()}</td>
 
-                      <td className="actions-cell">
-                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                          <div className="menu-title">Review actions</div>
+                      <td className="actions-cell" style={{ textAlign: "center" }}>
+                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey} width={260}>
+                          <div className="menu-title">Review Actions</div>
 
                           <MenuItem href={`/games/${g._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
                             View
@@ -1150,7 +1249,7 @@ export default function AdminDashboard() {
                               approveGame(g._id);
                             }}
                           >
-                            Approve & publish
+                            Approve & Publish
                           </MenuItem>
 
                           <MenuItem
@@ -1171,7 +1270,7 @@ export default function AdminDashboard() {
                 {fPending.length === 0 && (
                   <tr>
                     <td colSpan={5} className="empty">
-                      No pending submissions 🎉
+                      No Pending Submissions 🎉
                     </td>
                   </tr>
                 )}
@@ -1186,24 +1285,33 @@ export default function AdminDashboard() {
         <div className="card glass">
           <div className="card-head">
             <div className="card-title">Reported Comments</div>
-            <div className="muted tiny">Only comments with reports are shown</div>
+            <div className="muted tiny">Only Comments With Reports Are Shown</div>
           </div>
 
           <div className="table-wrap">
             <table className="table table-fixed pretty comments-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "18%" }}>Game</th>
-                  <th style={{ width: "16%" }}>Author</th>
-                  <th style={{ width: "30%" }}>Comment</th>
-                  <th style={{ width: "18%" }}>Reports detail</th>
-                  <th style={{ width: "8%" }}>Status</th>
-                  <th style={{ width: "6%" }}>Count</th>
-                  <th style={{ width: "4%" }} className="actions-head">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
+  <colgroup>
+    <col className="c-col-game" />
+    <col className="c-col-author" />
+    <col className="c-col-comment" />
+    <col className="c-col-reports" />
+    <col className="c-col-status" />
+    <col className="c-col-count" />
+    <col className="c-col-actions" />
+  </colgroup>
+
+  <thead>
+    <tr>
+      <th>Game</th>
+      <th>Author</th>
+      <th>Comment</th>
+      <th>Reports Detail</th>
+      <th>Status</th>
+      <th style={{ textAlign: "center" }}>Count</th>
+      <th style={{ textAlign: "center" }} className="actions-head">Actions</th>
+    </tr>
+  </thead>
+
 
               <tbody>
                 {sortedComments.map((c) => {
@@ -1225,12 +1333,13 @@ export default function AdminDashboard() {
                     const who = reporterLabel(rep, repId);
                     const why = reportReasonLabel(r);
                     const desc = reportDescriptionLabel(r);
-                    const descShort = desc ? ` — ${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}` : "";
+                    const descShort = desc ? ` — ${desc.slice(0, 34)}${desc.length > 34 ? "…" : ""}` : "";
                     return (
                       <div
                         key={idx}
                         className="muted tiny ellipsis"
-                        title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "no-id"})`}
+                        title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "No-Id"})`}
+                        style={{ fontWeight: 400, textAlign: "left" }}
                       >
                         • {who} — {why}
                         {descShort}
@@ -1243,67 +1352,86 @@ export default function AdminDashboard() {
                       <tr key={c._id}>
                         <td>
                           <div className="cell-texts">
-                            <div className="strong">{c.game?.title || "(deleted game)"}</div>
+                            <div className="strong">{c.game?.title || "(Deleted Game)"}</div>
                             {c.game?.slug && <div className="muted tiny ellipsis">{c.game.slug}</div>}
                           </div>
                         </td>
 
                         <td>
                           <div className="cell-texts">
-                            <div className="strong">{c.author?.username || "(unknown)"}</div>
+                            <div className="strong">{c.author?.username || "(Unknown)"}</div>
                             <div className="muted tiny ellipsis">{c.author?.email || "-"}</div>
                           </div>
                         </td>
 
                         <td>
                           <div className="multiline clamp-3">{c.content || ""}</div>
-                          {c.moderationReason && <div className="muted tiny">Note: {c.moderationReason}</div>}
+                          {c.moderationReason && (
+                            <div className="muted tiny" style={{ fontWeight: 400 }}>
+                              Note: {toTitleCase(c.moderationReason)}
+                            </div>
+                          )}
                         </td>
 
+                        {/* ✅ จัดใหม่ทั้งช่อง Reports Detail: summary ซ้าย + ปุ่มตาขวา (ไม่ลอยกลาง) */}
                         <td>
-                          <div className="cell-texts">
-                            {summaryItems.length > 0 ? (
-                              <>
-                                {summaryItems}
-                                {repArr.length > 2 && <div className="muted tiny">…and {repArr.length - 2} more</div>}
+  {summaryItems.length > 0 ? (
+    <div className="reports-cell">
+      <div className="reports-left">
+        {repArr.slice(0, 2).map((r, idx) => {
+          const rep = pickReporter(r);
+          const repId = getReporterId(r);
+          const who = reporterLabel(rep, repId);
+          const why = reportReasonLabel(r);
+          const desc = reportDescriptionLabel(r);
+          const descShort = desc ? ` — ${desc.slice(0, 34)}${desc.length > 34 ? "…" : ""}` : "";
+          return (
+            <div
+              key={idx}
+              className="report-line ellipsis"
+              title={`${who} — ${why}${desc ? ` — ${desc}` : ""} (${repId || "No-Id"})`}
+            >
+              • {who} — {why}
+              {descShort}
+            </div>
+          );
+        })}
 
-                                <button
-                                  type="button"
-                                  className="btn link tiny"
-                                  onClick={() => {
-                                    setOpenMenuKey(null);
-                                    setOpenReportKey(open ? null : rowReportKey);
-                                  }}
-                                  style={{
-                                    marginTop: "6px",
-                                    textAlign: "left",
-                                    padding: "6px 10px",
-                                    fontSize: "12px",
-                                    lineHeight: 1.1,
-                                    borderRadius: "10px",
-                                    width: "fit-content",
-                                  }}
-                                >
-                                  {open ? "Hide details" : "View details"}
-                                </button>
-                              </>
-                            ) : (
-                              <div className="muted tiny">-</div>
-                            )}
-                          </div>
-                        </td>
+        {repArr.length > 2 && (
+          <div className="report-more">…And {repArr.length - 2} more</div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className="eye-only-btn"
+        onClick={() => {
+          setOpenMenuKey(null);
+          setOpenReportKey(open ? null : rowReportKey);
+        }}
+        title={open ? "Hide Details" : "View Details"}
+        aria-label={open ? "Hide Details" : "View Details"}
+      >
+        <EyeIcon size={18} />
+      </button>
+    </div>
+  ) : (
+    <div className="muted tiny">-</div>
+  )}
+</td>
+
 
                         <td>
                           <CommentStatusText value={c.status} />
                         </td>
 
-                        <td>
+                        <td style={{ textAlign: "center" }}>
                           <ReportsText count={repCount} />
                         </td>
 
-                        <td className="actions-cell">
-                          <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                            <div className="menu-title">Comment actions</div>
+                        <td className="actions-cell" style={{ textAlign: "center" }}>
+                          <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey} width={220}>
+                            <div className="menu-title">Comment Actions</div>
 
                             <MenuItem
                               href={canView ? `/games/${c.game._id}` : undefined}
@@ -1351,87 +1479,75 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
 
+                      {/* ✅ จัด Report Details ใหม่: header ชัด + layout กระชับ ไม่โล่ง */}
                       {open && (
                         <tr key={`${c._id}:details`} className="row-sub">
-                          <td colSpan={7}>
-                            <div
-                              className="glass"
-                              style={{
-                                padding: "10px 12px",
-                                borderRadius: "12px",
-                                border: "1px solid rgba(255,255,255,.10)",
-                              }}
-                            >
-                              <div className="strong" style={{ marginBottom: 6 }}>
-                                Report details
-                              </div>
+<td colSpan={7}>
+  <div className="glass report-details">
+    <div className="report-details-head">
+      <div className="report-details-title">Report Details</div>
+      
+    </div>
 
-                              {repArr.length === 0 ? (
-                                <div className="muted tiny">No report details found.</div>
-                              ) : (
-                                <div style={{ display: "grid", gap: 8 }}>
-                                  {repArr.map((r, idx) => {
-                                    const rep = pickReporter(r);
-                                    const repId = getReporterId(r);
-                                    const who = reporterLabel(rep, repId);
-                                    const whoEmail =
-                                      safeStr(rep?.email) ||
-                                      safeStr(r.email) ||
-                                      safeStr(r.reporterEmail) ||
-                                      "-";
+    {repArr.length === 0 ? (
+      <div className="report-details-empty">No Report Details Found.</div>
+    ) : (
+      <div className="report-details-grid">
+        {repArr.map((r, idx) => {
+          const rep = pickReporter(r);
+          const repId = getReporterId(r);
+          const who = reporterLabel(rep, repId);
+          const whoEmail =
+            safeStr(rep?.email) ||
+            safeStr(r.email) ||
+            safeStr(r.reporterEmail) ||
+            "-";
 
-                                    const why = reportReasonLabel(r);
-                                    const desc = reportDescriptionLabel(r);
-                                    const when = reportTimeLabel(r);
+          const why = reportReasonLabel(r);
+          const desc = reportDescriptionLabel(r);
+          const when = reportTimeLabel(r);
 
-                                    return (
-                                      <div
-                                        key={idx}
-                                        style={{
-                                          display: "grid",
-                                          gridTemplateColumns: "28% 44% 28%",
-                                          gap: 10,
-                                          padding: "8px 10px",
-                                          borderRadius: "10px",
-                                          border: "1px solid rgba(255,255,255,.08)",
-                                          background: "rgba(255,255,255,.03)",
-                                        }}
-                                      >
-                                        <div className="tiny">
-                                          <div className="strong ellipsis" title={`${who} (${repId || "no-id"})`}>
-                                            {who}
-                                          </div>
-                                          <div></div>
-                                          <div className="muted tiny ellipsis" title={whoEmail}>
-                                            {whoEmail}
-                                          </div>
-                                        </div>
+          return (
+<div key={idx} className="report-item report-rowline">
+  <div className="report-inline">
+    <div className="report-who-line">
+      <span className="report-who-name ellipsis" title={`${who} (${repId || "No-Id"})`}>
+        {who}
+      </span>
+      <span className="report-dot">•</span>
+      <span className="report-who-email ellipsis" title={whoEmail}>
+        {whoEmail}
+      </span>
+    </div>
 
-                                        <div className="tiny">
-                                          <div className="muted tiny">Reason</div>
-                                          <div className="strong" title={why}>
-                                            {why}
-                                          </div>
+    <div className="report-field">
+      <span className="report-k">Reason</span>
+      <span className="report-pill">{why}</span>
+    </div>
 
-                                          <div className="muted tiny" style={{ marginTop: 6 }}>
-                                            Description
-                                          </div>
-                                          <div className="multiline clamp-3" title={desc || "-"}>
-                                            {desc || <span className="muted tiny">-</span>}
-                                          </div>
-                                        </div>
+    <div className="report-field report-desc-field">
+      <span className="report-k">Description</span>
+      {desc ? (
+        <span className="report-desc-inline ellipsis" title={desc}>{desc}</span>
+      ) : (
+        <span className="report-dash">-</span>
+      )}
+    </div>
+  </div>
 
-                                        <div className="tiny">
-                                          <div className="muted tiny">Reported at</div>
-                                          <div className="mono">{when}</div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </td>
+  <div className="report-right">
+    <span className="report-time">{when}</span>
+  </div>
+</div>
+
+
+          );
+        })}
+      </div>
+    )}
+  </div>
+</td>
+
                         </tr>
                       )}
                     </>
@@ -1441,7 +1557,7 @@ export default function AdminDashboard() {
                 {sortedComments.length === 0 && (
                   <tr>
                     <td colSpan={7} className="empty">
-                      No reported comments 🎉
+                      No Reported Comments 🎉
                     </td>
                   </tr>
                 )}
@@ -1456,15 +1572,15 @@ export default function AdminDashboard() {
         <div className="card glass">
           <div className="monthly-header">
             <div>
-              <div className="muted tiny">Monthly voting leaderboard</div>
+              <div className="muted tiny">Monthly Voting Leaderboard</div>
               <div className="strong">Showing {monthlyLabel}</div>
-              <div className="muted tiny">Most voted games in the selected month (top 50)</div>
+              <div className="muted tiny">Most Voted Games In The Selected Month (Top 50)</div>
             </div>
 
             <div className="monthly-controls">
               <div>
                 <label className="muted tiny block" htmlFor="monthSelect">
-                  Select month
+                  Select Month
                 </label>
                 <select
                   id="monthSelect"
@@ -1492,7 +1608,7 @@ export default function AdminDashboard() {
                 type="button"
                 onClick={() => fetchMonthlyLeaderboard(monthlyMonth)}
                 disabled={loading}
-                title="Load leaderboard for selected month"
+                title="Load Leaderboard For Selected Month"
               >
                 {loading ? "Loading..." : "Load"}
               </button>
@@ -1507,8 +1623,8 @@ export default function AdminDashboard() {
                   <th style={{ width: "36%" }}>Game</th>
                   <th style={{ width: "20%" }}>Uploader</th>
                   <th style={{ width: "18%" }}>Publication Status</th>
-                  <th style={{ width: "10%" }}>Votes</th>
-                  <th style={{ width: "8%" }} className="actions-head">
+                  <th style={{ width: "10%", textAlign: "center" }}>Votes</th>
+                  <th style={{ width: "8%", textAlign: "center" }} className="actions-head">
                     Actions
                   </th>
                 </tr>
@@ -1519,7 +1635,6 @@ export default function AdminDashboard() {
                   const game = row._id || row.game;
                   if (!game) return null;
 
-                  const key = `monthly:${game._id || idx}`;
                   const uploaderName = game.uploader?.username || game.uploaderName || "-";
 
                   return (
@@ -1547,15 +1662,30 @@ export default function AdminDashboard() {
                         <PublicationStatusText value={game.visibility} />
                       </td>
 
-                      <td className="mono">{row.votes}</td>
+                      <td className="mono" style={{ textAlign: "center" }}>
+                        {row.votes}
+                      </td>
 
-                      <td className="actions-cell">
-                        <ActionMenu menuKey={key} openKey={openMenuKey} setOpenKey={setOpenMenuKey}>
-                          <div className="menu-title">Actions</div>
-                          <MenuItem href={`/games/${game._id}`} target="_blank" onClick={() => setOpenMenuKey(null)}>
-                            View
-                          </MenuItem>
-                        </ActionMenu>
+                      <td className="actions-cell" style={{ textAlign: "center" }}>
+                        <a
+                          href={`/games/${game._id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn tiny"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "6px 12px",
+                            borderRadius: "10px",
+                            border: "1px solid rgba(255,255,255,.12)",
+                            background: "rgba(255,255,255,.04)",
+                            textDecoration: "none",
+                          }}
+                          title="View"
+                        >
+                          View
+                        </a>
                       </td>
                     </tr>
                   );
@@ -1564,7 +1694,7 @@ export default function AdminDashboard() {
                 {monthlyLeaderboard.length === 0 && (
                   <tr>
                     <td colSpan={6} className="empty">
-                      No votes for this month yet
+                      No Votes For This Month Yet
                     </td>
                   </tr>
                 )}

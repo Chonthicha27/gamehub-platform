@@ -1012,10 +1012,10 @@ export default function GameDetail() {
                 About
               </button>
               <button className={`gd-tab ${tab === "media" ? "is-on" : ""}`} onClick={() => setTab("media")} role="tab" aria-selected={tab === "media"} type="button">
-                Media
+                Game Media
               </button>
               <button className={`gd-tab ${tab === "comments" ? "is-on" : ""}`} onClick={() => setTab("comments")} role="tab" aria-selected={tab === "comments"} type="button">
-                Comments {commentsCount > 0 ? <span className="gd-badge">{commentsCount}</span> : null}
+                Comment {commentsCount > 0 ? <span className="gd-badge">{commentsCount}</span> : null}
               </button>
             </div>
           </div>
@@ -1037,7 +1037,15 @@ export default function GameDetail() {
                         : "Add to Favorites"
                 }
               >
-                {fav ? "★ In Favorites" : "☆ Add to Favorites"}
+                {fav ? (
+  <>
+    <span className="gd-favStar">★</span> In Favorites
+  </>
+) : (
+  <>
+    <span className="gd-favStar">☆</span> Add to Favorites
+  </>
+)}
               </button>
 
               <button
@@ -1049,52 +1057,67 @@ export default function GameDetail() {
                 {monthlyVoteLabel}
               </button>
 
-              <div className="gd-more" ref={moreRef}>
-                <button className="gd-btn" onClick={() => setMoreOpen((v) => !v)} type="button" aria-haspopup="menu" aria-expanded={moreOpen} ref={moreBtnRef}>
-                  More ▾
-                </button>
-
-                {moreOpen ? (
-                  <div className="gd-menu" role="menu" aria-label="More actions">
-                    <button className="gd-menuItem" onClick={copyLink} type="button" role="menuitem">
-                      Copy link
-                    </button>
-
-
-
-{(me && (String(me._id) === String(game?.uploader?._id || game?.uploader))) && !isPreview ? (
-  <>
-    <div className="gd-menuSep" />
+{/* ✅ Share button (non-owner) / Share dropdown (owner) */}
+{(!isPreview && isOwner) ? (
+  <div className="gd-more" ref={moreRef}>
     <button
-      className="gd-menuItem"
-      onClick={() => {
-        setMoreOpen(false);
-        nav(`/games/${game._id}/edit`);
-      }}
+      className="gd-btn"
+      onClick={() => setMoreOpen((v) => !v)}
       type="button"
-      role="menuitem"
+      aria-haspopup="menu"
+      aria-expanded={moreOpen}
+      ref={moreBtnRef}
     >
-      Edit
+      More ▾
     </button>
-    <button
-      className="gd-menuItem gd-menuItem--danger"
-      onClick={() => {
-        setMoreOpen(false);
-        onDelete();
-      }}
-      disabled={busy}
-      type="button"
-      role="menuitem"
-    >
-      Delete
-    </button>
-  </>
-) : null}
 
-                  </div>
-                ) : null}
-              </div>
-            </div>
+    {moreOpen ? (
+      <div className="gd-menu" role="menu" aria-label="Share actions">
+        <button className="gd-menuItem" onClick={copyLink} type="button" role="menuitem">
+          Share link
+        </button>
+
+        <div className="gd-menuSep" />
+
+        <button
+          className="gd-menuItem"
+          onClick={() => {
+            setMoreOpen(false);
+            nav(`/games/${game._id}/edit`);
+          }}
+          type="button"
+          role="menuitem"
+        >
+          Edit
+        </button>
+
+        <button
+          className="gd-menuItem gd-menuItem--danger"
+          onClick={() => {
+            setMoreOpen(false);
+            onDelete();
+          }}
+          disabled={busy}
+          type="button"
+          role="menuitem"
+        >
+          Delete
+        </button>
+      </div>
+    ) : null}
+  </div>
+) : (
+  <button
+    className="gd-btn"
+    type="button"
+    onClick={copyLink}
+    title="Share this game"
+    disabled={isPreview}
+  >
+    Share
+  </button>
+)}
+</div>
 
             <div className="gd-miniHint">{downloadOnly ? "Tip: Download from ⬇ on the game frame." : "Tip: Fullscreen from ⛶ on the game frame."}</div>
           </div>
@@ -1175,18 +1198,18 @@ export default function GameDetail() {
 
                 <div className="gd-rbars">
                   {[5, 4, 3, 2, 1].map((star) => {
-  // dist = [1★,2★,3★,4★,5★] => index = star-1
-  const row = ratingBars[star - 1] || { v: 0, pct: 0 };
-  return (
-    <div key={star} className="gd-rrow">
-      <div className="gd-rrow__left">{star}★</div>
-      <div className="gd-rrow__bar">
-        <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
-      </div>
-      <div className="gd-rrow__right">{row.v}</div>
-    </div>
-  );
-})}
+                // dist = [1★,2★,3★,4★,5★] => index = star-1
+                const row = ratingBars[star - 1] || { v: 0, pct: 0 };
+                return (
+                  <div key={star} className="gd-rrow">
+                    <div className="gd-rrow__left">{star}★</div>
+                    <div className="gd-rrow__bar">
+                      <div className="gd-rrow__fill" style={{ width: `${row.pct}%` }} />
+                    </div>
+                    <div className="gd-rrow__right">{row.v}</div>
+                  </div>
+                );
+              })}
 
                 </div>
               </details>
@@ -2287,6 +2310,11 @@ function StyleGameDetail() {
   justify-content:flex-end; /* ✅ ชิดขวา */
   margin: 0 0 10px 0;       /* เว้นจากกรอบเกมด้านล่าง */
   padding-right: 2px;
+}
+.gd-favStar{
+  color: #facc15;           /* เหลือง */
+  margin-right: 6px;
+  font-weight: 900;
 }
 
 `}</style>
